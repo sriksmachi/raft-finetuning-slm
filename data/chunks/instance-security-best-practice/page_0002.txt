@@ -1,0 +1,29 @@
+```markdown
+# Introduction
+
+### Video: Security Best Practices for the ServiceNow AI Platform
+
+## Document goal and structure
+
+This document provides a comprehensive overview of key considerations for securing a ServiceNow instance under the Shared Responsibility model where both the service provider and the customer share accountability for security and compliance.
+
+Each section is structured around the categories of Governance, Identify, Protect, Detect, Respond, and Recover, which reflect the natural progression of effective management and response. Within those sections, best practices follow a “crawl, walk, run” order.
+
+The focus of this guide is recommendations, rather than detailed platform descriptions. All stakeholders should review the white paper for full details.
+
+This document is designed to be read alongside [Securing the ServiceNow AI Platform](https://) which gives a holistic overview of the physical, administrative, and technical controls ServiceNow has in place to protect customer data.
+
+In this document, security and compliance is considered from the perspective of the [National Institute of Standards and Technology (NIST) Cybersecurity Framework (CSF)](https://). The CSF is a set of voluntary guidelines, standards, and practices made available by NIST, an agency of the United States Department of Commerce.
+
+This Best Practices Guide is also available in the following languages: [Spanish](https://), [French](https://), [German](https://), [Dutch](https://), [Italian](https://), [Brazilian Portuguese](https://), [Korean](https://), and [Japanese](https://).
+
+---
+
+Note: All information in this white paper is related to the standard ServiceNow Commercial Cloud.
+
+For information related to other globally located ServiceNow in-country cloud offerings and how these offerings may differ, please contact your ServiceNow account representative.
+
+---
+
+November 2025 | Release: Zurich
+```

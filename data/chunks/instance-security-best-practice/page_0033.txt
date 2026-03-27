@@ -1,0 +1,34 @@
+```markdown
+# Best practices continued
+
+## Implement logging and monitoring for the MID Server
+Please review the specific logging and monitoring considerations below related to the MID Server and the [logging and monitoring section](#). Collaborate with stakeholders to develop a comprehensive logging and monitoring strategy.
+
+- Consider enabling the MID Server Command Audit Log to track all executed commands.
+- Monitor changes to sensitive roles (e.g., `discovery_admin`, `mid_server`) and alert on unauthorized modifications.
+- Forward all log data to your internal SIEM platform for correlation and analysis. For detailed guidance on SIEM integration, refer to the [logging and monitoring section](#).
+
+---
+
+## Additional information
+- [Securing and encrypting MID Server data](#)
+- [MID Server system requirements](#)
+- [Prepare network connections for MID Servers](#)
+- [Disable outbound SSLv2/SSLv3](#)
+- [Installing the MID Server](#)
+- [External credential storage](#)
+- [ServiceNow Vault](#)
+- [Adaptive authentication](#)
+- [Zero Trust Access](#)
+- [ServiceNow Agent Client Collector (ACC)](#)
+- [MID Server command audit log](#)
+- [MID Server certificate check policies (enabling certificate validation)](#)
+- [Microsoft Just Enough Administration (JEA) Discovery](#)
+- [Enable MID Server mutual authentication](#)
+- [Shared responsibilities: Logging and monitoring](#)
+
+---
+
+November 2025 | Release: Zurich  
+Page 33
+```

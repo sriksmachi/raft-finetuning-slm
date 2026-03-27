@@ -1,0 +1,38 @@
+```markdown
+White Paper  
+
+# Table of Contents  
+
+Introduction . . . . . . . . . . . . . . . . . . . . . . . . . . . 2   
+- Document goal and structure . . . . . . . . . . . . . . . 2  
+
+Key concepts and reference material . . . . . . . . . . . . 5  
+- Intended audience . . . . . . . . . . . . . . . . . . . . . . 5  
+- Identify stakeholders . . . . . . . . . . . . . . . . . . . . . 5  
+- Security_Admin role . . . . . . . . . . . . . . . . . . . . . . 5  
+- Best practice prioritization . . . . . . . . . . . . . . . . . . 5  
+
+## 👥 THE SHARED RESPONSIBILITY MODEL . . . . . . . . 6  
+
+## GOVERN 7  
+- Security contacts . . . . . . . . . . . . . . . . . . . 7  
+- Data management and privacy compliance . . . . . . . 8  
+  - Data controller and data processor . . . . . . . . . . 8  
+- Compliance: Regulatory and legal . . . . . . . . . . . . 10  
+  - Data Security Addendum (DSA)  
+    and Data Processing Addendum (DPA) . . . . . . . 10  
+- Physical security and environmental controls . . . . 11  
+- Cloud infrastructure security management. . . . . . . 12  
+- Assess ServiceNow as a vendor . . . . . . . . . . . . . . 13  
+
+## IDENTIFY 14  
+- Instance management . . . . . . . . . . . . . . . . . . . . 14  
+
+## PROTECT 15  
+- Vulnerability management . . . . . . . . . . . . . . . . . 15  
+- Identity and access management . . . . . . . . . . . . 17  
+  - Authentication . . . . . . . . . . . . . . . . . . . . . . . . . . 17  
+  - Authorization . . . . . . . . . . . . . . . . . . . . . . . . . . 20  
+- ServiceNow Security Center . . . . . . . . . . . . . . . . . 23  
+  - Secure instance configuration . . . . . . . . . . . . . . . 23  
+```

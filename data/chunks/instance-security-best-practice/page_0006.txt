@@ -1,0 +1,23 @@
+```markdown
+# The Shared Responsibility Model
+
+Security is a partnership between ServiceNow and the customer, both with specific responsibilities. Therefore, it is essential that each party understands their role in this partnership. Using the extensive capabilities of the ServiceNow AI Platform, customers can configure instances to meet their unique security policies and obligations while also complying with any regional or industry-specific requirements.
+
+- **As the data controller**, the customer determines access rights to their instance and the data it contains. Security controls within the instance enable customers to implement policies appropriate to their own requirements and make decisions on data classification.
+
+- **As the data processor**, ServiceNow secures the platform infrastructure and provides tools for security management and monitoring according to customer requirements.
+
+- **The colocation facility** and the third-party **cloud service provider** (CSP) also have shared responsibilities with the data controller (customer) and data processor (ServiceNow).
+
+For more information about security responsibilities concerning customer data, see the [ServiceNow Shared Responsibility Model overview](#).
+
+This document includes shared responsibilities specified at the beginning of each section. Customers should review each customer responsibility with relevant stakeholders to ensure the organization fully understands its obligations as specified in the ServiceNow Shared Responsibility Model. Relevant stakeholders may include architecture teams, security teams, and compliance personnel.
+
+| Area of Responsibility                         | Customer | ServiceNow | Colocation Facility |
+|------------------------------------------------|----------|------------|----------------------|
+| Security contact details                       | ●        | ●          |                      |
+| Data management and privacy compliance         | ●        | ●          |                      |
+| Compliance: Regulatory and legal               | ●        | ●          | ●                    |
+| Physical security and environment controls     | .        | .          | ●                    |
+| Cloud infrastructure security management       |          |            |                      |
+Mid Securty Centers Securely Down Legacy LFTWARE

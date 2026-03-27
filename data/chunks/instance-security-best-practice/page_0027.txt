@@ -1,0 +1,26 @@
+```markdown
+# Best practices continued
+
+## Monitor and protect sensitive roles
+Track and monitor changes to sensitive roles (e.g., KMF roles, admin, security_admin) to detect and alert any unauthorized modifications. For more detailed guidance, refer to the [logging and monitoring section](#).
+
+---
+
+## Additional information
+
+- [Video: Standard Encryption Options](#)
+- [Shared responsibilities: Encryption](#) (requires a ServiceNow Support account)
+- [Negotiated ciphers](#)
+- [Field Encryption Starter](#)
+- [Field Encryption Enterprise](#)
+- [Cloud Encryption with Key Management](#)
+- [Full Disk Encryption](#)
+- [Key Management Framework](#)
+- [Cryptographic module overview](#)
+
+---
+
+November 2025 | Release: Zurich
+
+Page 27
+```

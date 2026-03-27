@@ -1,0 +1,31 @@
+```markdown
+# Secure coding
+
+## Customer responsibility
+Customers are responsible for any custom code they develop on the ServiceNow AI Platform. All custom development should follow secure coding best practices to minimize security risks.
+
+## ServiceNow responsibility
+ServiceNow follows a “build security in” strategy to identify and reduce risk throughout the Software Development Lifecycle. This approach includes security education, best practices, iterative security design, and continuous security analysis, enabling product teams to deliver robust and secure software.
+
+## Best practices
+
+### Review ServiceNow Software Development Lifecycle SOP
+Regularly review the ServiceNow [Software Development Lifecycle SOP](https://www.servicenow.com/) with stakeholders, such as security and compliance teams, to ensure everyone understands the process and can address any questions (link requires access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](https://www.servicenow.com/)).
+
+### Refer developers to the Secure Coding Guide
+Always adhere to secure coding best practices when developing applications. The [Secure Coding Guide](https://www.servicenow.com/) provides detailed recommendations on topics such as input/output sanitization, session management, secure access, and more (link requires a ServiceNow Support account).
+
+## Additional information
+The links below require a ServiceNow Support account:
+- [Shared responsibilities: Secure coding](https://www.servicenow.com/)
+- [Secure Coding Guide](https://www.servicenow.com/)
+
+The links below require access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](https://www.servicenow.com/):
+- [Software Development Lifecycle SOP](https://www.servicenow.com/)
+- [Code Control SOP](https://www.servicenow.com/)
+- [Maintenance Release Management SOP](https://www.servicenow.com/)
+
+---
+
+November 2025 | Release: Zurich
+```

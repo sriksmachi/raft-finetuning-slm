@@ -1,0 +1,31 @@
+```markdown
+# Request that the support case be marked as a security case
+If a case being submitted involves confirmed compromise of customer information, customers are able to request the case be flagged as a security case, which limits the case visibility as needed. Ensure that security cases are intentionally designated as such. Customer visibility into a security case is limited to the submitter and any accounts designated on the case’s watchlist.
+
+## Educate your security team on how to raise a case with ServiceNow Support
+Ensure that your security team, or at a minimum, the designated security contact in [Security Contacts on ServiceNow Support](https://support.servicenow.com), has documentation on how to create a support case via [support.servicenow.com](https://support.servicenow.com) in the event they need to report an incident and cannot contact a member of the platform team.
+
+## Understand how to review logs for investigations
+One of the most important components of incident response is ServiceNow instance logs. These [system logs](https://support.servicenow.com), will be able to provide customers’ security teams with the necessary telemetry for their incident response investigations. Logs can be reviewed using a variety of methods, such as the [log file browser](https://support.servicenow.com), Table APIs, and directly in the platform.
+
+## Conduct postmortem activities following a security incident
+Following a security incident, it is important to perform a postmortem review of the investigations to determine possible improvements that can be made for future incident response activities. This can include identifying possible communication issues, gaps within the environment’s security posture, and ensuring all involved parties understand the root cause of the issue and how to avoid similar situations moving forward.
+
+---
+
+## Additional information
+- [System logs](https://support.servicenow.com)
+- [Log file browser](https://support.servicenow.com)
+- [CORE Directory—Incident Response SOPs](https://support.servicenow.com)
+  (Requires access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](https://support.servicenow.com))
+
+The following links require a ServiceNow Support account:
+- [How to report security incidents and security findings to ServiceNow](https://support.servicenow.com)
+- [Security contacts in ServiceNow Support](https://support.servicenow.com)
+- [Investigating user activity](https://support.servicenow.com)
+
+---
+
+November 2025 | Release: Zurich  
+42
+```

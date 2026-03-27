@@ -1,0 +1,38 @@
+```markdown
+# Mobile application security
+
+## Customer responsibility
+Customers are responsible for implementing and maintaining security measures that protect their ServiceNow mobile environment. This includes enforcing strong authentication methods such as MFA, managing user privileges, and configuring mobile security settings to align with the organizational policies and standards.
+
+---
+
+## Best practices
+
+### Configure mobile application security controls
+Collaborate with stakeholders to determine the configuration of built-in mobile security controls. This process should include reviewing the following controls to ensure alignment with organizational policies and standards: clipboard restrictions, disabling screenshots, preventing attachments, requiring an in-app PIN, and enabling background blur.
+
+### Manage the organization’s mobile application distribution
+Collaborate with stakeholders to determine how to deploy ServiceNow mobile apps securely using an enterprise mobility management (EMM) or mobile application management (MAM) solution. These platforms enforce security policies, manage app configurations, and protect data—even in bring your own device scenarios. ServiceNow supports distribution through common EMM or mobile device management (MDM) platforms.
+
+### Conduct Mobile Application Penetration Testing
+Determine whether a mobile application penetration test is needed by collaborating with your security team and ServiceNow instance administrator. Under the Customer Penetration Testing Policy, customers may conduct regular penetration tests on their organization’s ServiceNow mobile applications to identify potential security risks.
+
+---
+
+## Additional information
+- [Mobile security white paper](#)
+- [Mobile security documentation](#)
+- [Mobile security controls](#)
+- [User authentication for ServiceNow mobile apps](#)
+- [Background blur (obfuscation)](#)
+- [Cross-origin resource sharing (CORS) rules](#)
+- [Enable mobile re-authentication](#)
+- [Zero Trust Access for Mobile](#)
+- [Adaptive authentication for trusted mobile apps](#)
+- [Mobile application management (MAM) integration](#)
+- [Customer penetration testing policy](#) (requires a ServiceNow Support account)
+
+---
+
+November 2025 | Release: Zurich
+```

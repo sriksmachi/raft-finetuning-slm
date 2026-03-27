@@ -1,0 +1,26 @@
+```markdown
+# Key concepts and reference material
+
+## Intended audience
+This guide is specifically designed for instance administrators to collaborate closely with security and compliance professionals. Engaging both parties is essential to effectively address the evolving landscape of digital threats, demonstrate due diligence, and sustain a robust security posture across the ServiceNow environment.
+
+## Identify stakeholders
+At the outset of a best practice review, instance administrators are advised to identify the primary security and compliance stakeholders within their organization. Their expertise and insights will help tailor the best practices to the organization’s specific risk profile and compliance requirements.
+
+Engaging these partners early in the process not only streamlines decision making but also strengthens the organization’s overall security posture throughout the ServiceNow environment.
+
+## Security_Admin role
+[High Security Settings](https://www.servicenow.com) and the [High Security plugin](https://www.servicenow.com) are activated by default on new ServiceNow instances and they can provide an elevated privilege role called `security_admin` role. This role allows users to create and change access controls and change High Security Settings. In the base system, only the default System Administrator (admin) user has the `security_admin` role. The customer admin should work with stakeholders, such as the company’s security team, to determine if an elevated role assignment is required. The `security_admin` role should be assigned to a limited number of users and groups.
+
+## Best practice prioritization
+Customers should evaluate each best practice in collaboration with relevant stakeholders to determine applicability and evaluate potential risks. Therefore, they must work closely with security and compliance teams when identifying the best practices to address.
+
+Customers should also work with all stakeholders to set the prioritization of each best practice.
+
+ServiceNow stands ready to provide guidance and support once you’ve begun implementing these measures. Work with your account teams or open a [ServiceNow Support](https://www.servicenow.com) case for more clarification.
+
+---
+
+November 2025 | Release: Zurich  
+Page 5
+```

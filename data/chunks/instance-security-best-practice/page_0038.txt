@@ -1,0 +1,44 @@
+```markdown
+# DETECT
+
+## Logging and monitoring
+
+### Customer responsibility
+Customers are responsible for managing and monitoring security-related information within their ServiceNow instance. Extensive logging of transactions, events, and system-level activity is stored in tables within the customer’s instance. Customers have access to:
+- End-user activity  
+- Failed login attempts  
+- Audit trails and record histories  
+- Administrative escalations  
+- Access by ServiceNow support personnel  
+
+ServiceNow AI Platform transaction logs are retained within the instance for approximately 30 days, event logs for about 7 days, and audit records are retained indefinitely within the instance.  
+
+Customers should ensure that the [protected tables plugin](#) is enabled on their ServiceNow instance and that appropriate protection levels are configured. When the property `com.glide.security.protected_table.enabled` is set to true, the platform applies controls designed to prevent privileged users from tampering with critical log tables. This capability is essential for maintaining the integrity of audit data and reducing the risk of unauthorized changes.  
+
+To implement protected tables effectively, security teams should review and define the correct protection levels and actions that align with their company policies. It is equally important to incorporate alerts into monitoring procedures so that any attempt to modify protected tables is detected promptly.  
+
+By combining these measures, organizations can strengthen compliance, preserve operational transparency, and ensure that sensitive log data remains secure throughout its lifecycle.
+
+---
+
+### ServiceNow responsibility
+ServiceNow operates a Security Information and Event Management (SIEM) system to review and correlate logs from multiple network and infrastructure sources. A Scheduled Security Operations Checklist is in place, which includes daily reviews of:
+- Linux and Windows systems  
+- Network devices  
+- Intrusion Detection System (IDS) alerts  
+- Behavioral and identified issue logs  
+
+High-risk issues, such as intrusion detection events, trigger real-time alerts that are immediately sent to the Security Incident Response Team for review. Network and infrastructure log events are retained for a minimum of 90 days.
+
+---
+
+### Best practices
+
+#### Define a log monitoring strategy
+Coordinate with your security and compliance teams to determine the optimal log monitoring approach for your instance. Decide whether both production and sub-production environments should be monitored, identify storage locations, and establish retention periods. It is essential that the organization defines which events are monitored and how alerts are generated, ensuring comprehensive coverage and swift action against potential threats.
+
+---
+
+*November 2025 | Release: Zurich*  
+*38*
+```

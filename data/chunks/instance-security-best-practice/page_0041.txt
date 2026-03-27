@@ -1,0 +1,31 @@
+```markdown
+# RESPOND
+
+## Incident management
+
+### Customer responsibility
+During an incident, customers must lead investigations based on their internal processes, security needs, and regulatory obligations, as ServiceNow cannot anticipate these specifics. In addition, ServiceNow asks that customers keep their security contacts updated in the event that ServiceNow needs to reach out for a suspected incident.
+
+While ServiceNow can assist with questions on the investigation, customers are responsible for classifying related behavior as malicious or benign, given their contextual knowledge. [ServiceNow Support](#) can help interpret log samples but cannot review all logs or determine the full scope of an incident.
+
+To ensure effective assistance, customers are responsible for providing detailed information—such as timelines, IPs, and user data—when requesting support. Broad log queries can delay investigations, whereas targeted data enables faster resolution.
+
+### ServiceNow responsibility
+ServiceNow, as the data processor, supports customer incident response by querying backend logs upon request, subject to an eight-week retention limit. While customers are responsible for interpreting logs, [ServiceNow Support](#) can help review samples to clarify log types. However, it is essential to note that ServiceNow Support does not have the resources to analyze every event.
+
+ServiceNow Support and security teams assist in identifying possible causes of incidents and offer preventive guidance, though recommendations may be limited by platform capabilities.
+
+At an enterprise level, security teams at ServiceNow have implemented detection rules that initiate internal incident response processes. Detections related to customer instances are normally reported through a support case.
+
+### Best practices
+
+#### Understand your organization’s incident response escalation channels
+One of the most important variables during a security incident is the time between the incident being reported and when your security team is alerted. To minimize this time as much as possible, ensure that you understand the appropriate contacts within your organization that need to be alerted when an incident is reported. This could be an email address, a catalog item within your internal resources, or a post to a messaging channel. By understanding the initial steps to be taken, customers will be able to quickly respond to an incident, whether it is reported by a company resource or by [ServiceNow Support](#) cases or COMM records.
+
+#### Ensure security communications from ServiceNow are properly routed
+Ensure that your ServiceNow security contacts are updated and security-related COMM records are not being filtered to spam folders. Security contacts can be updated on [ServiceNow Support](#) by a member of the customer’s platform team and should receive an email notification for security-related notifications when they are sent. These notifications can come from sources such as cases created for a ServiceNow-detected security incident and COMM records.
+
+---
+
+November 2025 | Release: Zurich
+```
