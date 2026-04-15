@@ -106,12 +106,12 @@ def strip_str(s: str) -> str:
     return s[l:min(r, len(s))]
 
 
-def generate_instructions_gen(chunk: Any, x: int = 5) -> list[str]:
-    log.debug("Generating %d questions for chunk (len=%d)", x, len(str(chunk)))
+def generate_instructions_gen(chunk: Any, num_questions: int = 5) -> list[str]:
+    log.debug("Generating %d questions for chunk (len=%d)", num_questions, len(str(chunk)))
     response = client.chat.completions.create(
         model=gpt4o_deployment,
         messages=[
-            {"role": "system", "content": "You are a synthetic question-answer pair generator. Given a chunk of context about some topic(s), generate exactly %s example questions a user could ask and would be answered using information from the chunk. For example, if the given context was a Wikipedia paragraph about the United States, an example question could be 'How many states are in the United States?'" % (x)},
+            {"role": "system", "content": "You are a synthetic question-answer pair generator. Given a chunk of context about some topic(s), generate exactly %s example questions a user could ask and would be answered using information from the chunk. For example, if the given context was a Wikipedia paragraph about the United States, an example question could be 'How many states are in the United States?'" % (num_questions)},
             {"role": "system", "content": "The questions should be able to be answered in a few words or less. Include only the questions in your response."},
             {"role": "user", "content": str(chunk)}
         ]
@@ -119,7 +119,7 @@ def generate_instructions_gen(chunk: Any, x: int = 5) -> list[str]:
     queries = response.choices[0].message.content.split('\n')
     queries = [strip_str(q) for q in queries]
     queries = [q for q in queries if any(c.isalpha() for c in q)]
-    queries = queries[:int(x)]
+    queries = queries[:num_questions]
     log.debug("Generated %d question(s)", len(queries))
     return queries
 
@@ -161,7 +161,7 @@ errors: list = []
 def add_chunk_to_dataset(
     chunks: list[str],
     chunk: str,
-    x: int = 5,
+    num_questions: int = 5,
     num_distract: int = 3,
     p: float = 0.8,
 ) -> None:
@@ -169,7 +169,7 @@ def add_chunk_to_dataset(
     i = chunks.index(chunk)
     log.debug("Processing chunk %d/%d", i + 1, len(chunks))
     try:
-        qs = generate_instructions_gen(chunk, x)
+        qs = generate_instructions_gen(chunk, num_questions)
     except Exception as e:
         log.error("Failed to generate questions for chunk %d: %s", i, e, exc_info=True)
         errors.append(e)
@@ -194,6 +194,7 @@ def add_chunk_to_dataset(
         for j in random.sample(indices, num_distract):
             docs.append(chunks[j])
 
+        # With probability p, keep the oracle chunk as the first doc; otherwise replace it with a random distractor. This creates a mix of "easy" and "hard" examples for the model.
         oracle = random.uniform(0, 1) < p
         if not oracle:
             docs[0] = chunks[random.sample(indices, 1)[0]]
@@ -213,9 +214,14 @@ def add_chunk_to_dataset(
             continue
 
         context = ""
+        # Docs contain both oracle and distractors, but we want to wrap them in <DOCUMENT> tags to preserve chunk boundaries for the model.
         for doc in docs:
             context += "<DOCUMENT>" + str(doc) + "</DOCUMENT>\n"
-        context += q
+        
+        
+        context += "\n### Question:\n" + q 
+        
+        
         datapt["instruction"] = context
 
         if not ds:
@@ -231,14 +237,14 @@ def add_chunk_to_dataset(
             ds = ds.add_item(datapt)
 
 
-def generate_dataset(chunks: list[str]) -> None:
+def generate_dataset(chunks: list[str], num_questions: int = 5) -> None:
     global ds, errors
     errors = []
     ds = Dataset.from_dict({})
-    log.info("Starting dataset generation for %d chunks", len(chunks))
+    log.info("Starting dataset generation for %d chunks (num_questions=%d)", len(chunks), num_questions)
 
     def process_chunk(chunk):
-        add_chunk_to_dataset(chunks, chunk, 5, 3)
+        add_chunk_to_dataset(chunks, chunk, num_questions, 3)
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [executor.submit(process_chunk, chunk) for chunk in chunks]
@@ -280,11 +286,20 @@ def save_datasets(training_df, output_dir: str = "./data/training_data_raft") ->
 
 if __name__ == "__main__":
     try:
-        skip_extract = "--skip-extract" in sys.argv
-        pdf_path     = "./data/instance-security-best-practice.pdf"
-        pdf_stem     = Path(pdf_path).stem
-        chunks_dir   = f"./data/chunks/{pdf_stem}"
-        output_dir   = "./data/training_data_raft"
+        import argparse
+        parser = argparse.ArgumentParser(description="RAFT dataset generation")
+        parser.add_argument("--skip-extract", action="store_true",
+                            help="Skip PDF extraction, use existing chunks")
+        parser.add_argument("--num-questions", type=int, default=5,
+                            help="Number of questions to generate per chunk (default: 5)")
+        args = parser.parse_args()
+
+        skip_extract  = args.skip_extract
+        num_questions = args.num_questions
+        pdf_path      = "./data/instance-security-best-practice.pdf"
+        pdf_stem      = Path(pdf_path).stem
+        chunks_dir    = f"./data/chunks/{pdf_stem}"
+        output_dir    = "./data/training_data_raft"
 
         log.info("=" * 60)
         log.info("RAFT data generation started")
@@ -307,7 +322,8 @@ if __name__ == "__main__":
         log.info("Loaded %d chunk(s)", len(chunks))
 
         # Step 3: Generate Q/A/D triplets
-        generate_dataset(chunks)
+        log.info("Generating %d question(s) per chunk", num_questions)
+        generate_dataset(chunks, num_questions=num_questions)
 
         # Step 4: Format and save
         training_df = ds.to_pandas()

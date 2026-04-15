@@ -143,26 +143,52 @@ def _answer_with_gpt4o(client: AzureOpenAI, question: str, context: str) -> str:
     return response.choices[0].message.content.strip()
 
 
-def _answer_with_hf_model(pipeline, question: str, context: str) -> str:
-    """Generate an answer using a HuggingFace text-generation pipeline."""
-    messages = [
-        {"role": "system",    "content": _SYSTEM_PROMPT},
-        {"role": "user",      "content": f"Context:\n{context}\n\nQuestion: {question}"},
-    ]
-    # Use the tokenizer's chat template if available, else fall back to manual formatting
-    try:
-        prompt = pipeline.tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
-    except Exception:
-        prompt = (
-            f"<|system|>\n{_SYSTEM_PROMPT}\n"
-            f"<|user|>\nContext:\n{context}\n\nQuestion: {question}\n"
-            "<|assistant|>\n"
-        )
+def _load_hf_model_and_tokenizer(model_id: str):
+    """Load a HuggingFace causal LM and its tokenizer onto the available device."""
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    out = pipeline(prompt, max_new_tokens=256, do_sample=False, return_full_text=False)
-    return out[0]["generated_text"].strip()
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    log.info("Loading HF model '%s' on device '%s' ...", model_id, device)
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+        device_map="auto",
+    )
+    model.eval()
+    return model, tokenizer, device
+
+
+def _answer_with_hf_model(model, tokenizer, device: str, instruction: str) -> str:
+    """Generate an answer using model.generate with the chat template applied.
+
+    Uses the pre-formatted `instruction` field (oracle + distractors + question)
+    as the user turn — matching the format the model was fine-tuned on.
+    """
+    import torch
+
+    messages = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "user",   "content": f"###Context: {instruction}"},
+    ]
+    inputs = tokenizer.apply_chat_template(
+        messages,
+        tokenize=True,
+        add_generation_prompt=True,
+        return_tensors="pt",
+    ).to(device)
+
+    with torch.no_grad():
+        outputs = model.generate(
+            inputs,
+            max_new_tokens=256,
+            use_cache=True,
+            temperature=0.7,
+            min_p=0.1,
+            do_sample=True,
+        )
+    return tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -216,8 +242,9 @@ def run_ragas_evaluation(
         # RAGAS expects a list-of-lists for contexts (multiple retrieved docs supported)
         "contexts":      [[r["context"]] for r in records],
         # ground_truths drives context_recall; wrap in list per ragas convention
-        "ground_truths": [[r["answer"]] for r in records],
+        "ground_truths": [[r["cot_answer"]] for r in records],
     }
+    
     dataset = HFDataset.from_dict(ragas_data)
 
     wrapped_llm = LangchainLLMWrapper(judge_llm)
@@ -254,7 +281,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--dataset",
-        default="./data/training_data/test.jsonl",
+        default="./data/training_data_raft/validation.jsonl",
         help="Path to the JSONL evaluation file (default: RAG test split)",
     )
     p.add_argument(
@@ -312,20 +339,19 @@ if __name__ == "__main__":
 
         # ── 4. HuggingFace model inference + evaluation ──────────────────────
         if "hf" in args.models:
-            log.info("Loading HF model '%s' ...", args.hf_model)
-            import torch
-            from transformers import pipeline as hf_pipeline
+            hf_model, hf_tokenizer, hf_device = _load_hf_model_and_tokenizer(args.hf_model)
 
-            pipe = hf_pipeline(
-                "text-generation",
-                model=args.hf_model,
-                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                device_map="auto",
+            eval_df = pd.DataFrame(records)
+            # Use the `instruction` field if present (RAFT format); fall back to context
+            if "instruction" not in eval_df.columns:
+                eval_df["instruction"] = eval_df["context"]
+
+            tqdm.pandas(desc=f"HF ({args.hf_model})")
+            eval_df["hf_answer"] = eval_df["instruction"].progress_apply(
+                lambda instr: _answer_with_hf_model(hf_model, hf_tokenizer, hf_device, instr)
             )
-            hf_answers = [
-                _answer_with_hf_model(pipe, r["question"], r["context"])
-                for r in tqdm(records, desc=f"HF ({args.hf_model})", unit="q")
-            ]
+            hf_answers = eval_df["hf_answer"].tolist()
+            
             all_results[args.hf_model] = run_ragas_evaluation(
                 records, hf_answers, judge_llm, embeddings, model_label=args.hf_model
             )

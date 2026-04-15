@@ -26,3 +26,5 @@ scikit-learn
 tiktoken==0.7.0
 tqdm==4.66.2
 spacy
+torch
+transformers
