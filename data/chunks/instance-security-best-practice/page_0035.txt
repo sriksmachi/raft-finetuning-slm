@@ -1,0 +1,35 @@
+```markdown
+# Best practices continued
+
+## Enforce email authentication and domain restrictions
+Customers can control what domains and users are allowed to send email into their ServiceNow instance, as well as what domains and users are valid email destinations using system address filters. Collaborate with your security and IT teams to determine if you need to configure any of the following email controls.
+
+ServiceNow provides Sender Policy Framework (SPF) records to identify email hosts that are approved to send as ServiceNow. To use SPF services, the customer’s email systems must be configured to accept mail from the ServiceNow email infrastructure. ServiceNow recommends that customers consume the published ServiceNow SPF records dynamically, rather than allowing by IP address. When allowing by IP address, it is important to note that the addresses may change.
+
+The ServiceNow AI Platform also offers support for Domain Keys Identified Mail (DKIM) and Domain-based Message Authentication, Reporting, and Conformance (DMARC). DKIM is also supported for a custom domain.
+
+## Set approved email domains for automatic user account creation
+Collaborate with stakeholders to identify and define trusted email domains for account creation, when possible.
+
+---
+
+# Additional information
+
+- [System address filters](#)
+- [ServiceNow Antivirus Protection](#)
+- [Email Filter plugin](#)
+- [Advanced Email Setup](#)
+- [ServiceNow Security Center (SSC) metrics](#)
+- [Sensitive data redaction for inbound emails](#)
+- [Secure/Multipurpose Internet Mail Extensions (S/MIME)](#)
+
+The links below require a ServiceNow Support account:
+- [Sender policy framework (SPF)](#)
+- [Domain keys identified mail (DKIM)](#)
+- [Domain-based message authentication, reporting, and conformance (DMARC)](#)
+
+---
+
+November 2025 | Release: Zurich  
+35
+```

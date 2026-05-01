@@ -1,0 +1,33 @@
+```markdown
+# IDENTIFY
+
+## Instance management
+
+### Customer responsibility
+Customers must oversee all the organization’s production and sub-production ServiceNow instances, ensuring each one’s purpose, owner, and data classification are known.
+
+### Best practices
+
+#### Maintain a centralized inventory of instances
+Maintain a centralized, up-to-date inventory of all ServiceNow instances (see the [ServiceNow Support Instances Dashboard](#)). Clearly identify each instance by name and URL, environment type (such as Production, Development, Test, or Sandbox), business purpose, designated business and technical owners, and data classification.
+
+#### Regularly review all instances
+Conduct regular reviews of all production and sub-production ServiceNow instances to verify each instance’s ownership, purpose, and ongoing alignment with business needs. Document each review and its findings and formalize the follow-up process to support continuous oversight.
+
+#### Align with change management
+Changes to ServiceNow instances should follow the organization’s change management process. Document each activity with an official record and obtain approvals before proceeding to ensure tracking, authorization, and compliance.
+
+#### Plan for acceptable use
+Customers should work with all stakeholders to define appropriate usage guidelines for ServiceNow. This guidance should be published in the organizational standards, when appropriate. Manage instance activity in accordance with company guidelines throughout each instance’s lifecycle.
+
+#### Retire unused instances
+Decommission ServiceNow instances that are no longer needed, following the organization’s documented retirement process that includes backing up critical data, removing all integrations and credentials, and updating the centralized inventory to reflect changes.
+
+### Additional information
+- [Requesting instance retire via service catalog on ServiceNow Support](#) (requires a ServiceNow Support account)
+
+---
+
+November 2025 | Release: Zurich
+Page 14
+```

@@ -1,0 +1,39 @@
+```markdown
+# Best practices continued
+
+## Use Access Analyzer to review access controls
+Use ServiceNow Access Analyzer to conduct regular audits of user, group, and role permissions for core platform elements such as tables, script includes, UI pages, and REST endpoints. Schedule governance reports and include IT security and compliance stakeholders during the review process as appropriate. This method helps evaluate least-privilege access across the ServiceNow AI Platform.
+
+## Establish a regular access review process for Access Analyzer reports
+Customers should establish processes to perform regular reviews of the reports to ensure that only authorized personnel have appropriate access:
+- Define a review cadence (e.g., quarterly) for auditing access reports.
+- Involve appropriate stakeholders such as IT security, compliance, or application owners.
+- Remove or adjust permissions as needed to enforce least access.
+- Generate and retain reports regularly to support audit, compliance, and governance activities.
+
+## Implement identity provisioning with SCIM
+Review the information on the [System for Cross-Domain Identity Management (SCIM) plugin](#), which enables customers to efficiently provision and manage user identities, group memberships, and additional attributes from external sources using an industry-standard protocol. The SCIM plugin can be used to automate user and group management from sources like Active Directory, AWS, or Okta.
+
+# Additional information
+- [Exploring access control lists (ACLs)](#)
+- [Security Attributes fundamentals](#)
+- [Non-Interactive sessions](#)
+- [Machine Identity Console](#)
+- [Roles](#)
+- [Security data filters](#)
+- [Limit concurrent sessions](#)
+- [Adaptive authentication with Session Validation Context](#)
+- [Default deny plugin (instance security hardening)](#)
+- [Security jump start—ACL rules plugin](#)
+- [Automatic user creation](#)
+- [ServiceNow SNC Access Control plugin](#)
+- [High security plugin (HSP)](#)
+- [Contextual Security Manager](#)
+- [Access Analyzer](#)
+- [Activating the SCIM plugin](#)
+- [Time-limited roles](#)
+
+---
+
+November 2025 | Release: Zurich
+```

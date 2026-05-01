@@ -1,0 +1,49 @@
+```markdown
+# Cloud infrastructure security management
+
+## ServiceNow responsibility
+
+ServiceNow is responsible for maintaining a secure architecture within customer cloud environments. This includes implementing hardened configurations and supporting processes to protect sensitive data and ensure system integrity. Security measures in place include firewalls, secure logical access controls, and intrusion detection systems. ServiceNow also continuously monitors systems for vulnerabilities and malicious activity.
+
+As the SaaS Cloud Solution Provider, ServiceNow manages the cloud infrastructure to ensure availability, scalability, security, and performance. Responsibilities include:
+
+- Developing and enforcing security policies and controls
+- Monitoring for potential threats
+- Implementing access controls
+- Ensuring compliance with applicable regulations and industry standards
+
+Additional responsibilities include conducting security assessments, performing penetration testing, and responding promptly to potential security incidents.
+
+---
+
+## Best practices
+
+### Review and understand cloud infrastructure security management at ServiceNow
+
+Establish a structured process to regularly review the ServiceNow cloud infrastructure security management documentation. Ensure all relevant stakeholders are engaged in these reviews to maintain alignment, compliance, and awareness of security practices.
+
+---
+
+## Additional information
+
+- [Securing the ServiceNow AI Platform white paper](#)
+
+The links below require access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](#).
+
+- [Change management SOP](#)
+- [Patching Program SOP](#)
+- [Backup and restoration SOP](#)
+- [System configuration management SOP](#)
+- [ServiceNow controlled access (SNCA) policy](#)
+- [Corporate business continuity management policy](#)
+- [Information system contingency plan (ISCP) and test report](#)
+- [Information security policy](#)
+- [Network overview and flow diagrams](#)
+- [Security incident response SOP](#)
+- [Global training policy](#)
+
+---
+
+November 2025 | Release: Zurich
+12
+```

@@ -1,0 +1,38 @@
+```markdown
+# ServiceNow responsibility continued
+
+## Backup restoration
+If a customer deletes data inadvertently, or if a customer's data integration or automation gets misconfigured or malfunctions, this could render data unusable or inaccessible. In these scenarios, AHA architecture would not be able to recover the deleted data or data loss due to misconfiguration, because with AHA database replication occurs to both instances in the pair at near real-time. Restoring from **backup** is the only option for recovery.
+
+ServiceNow can restore customer data upon request. For more information, see the [ServiceNow Backup and Restoration SOP](#) (link requires access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](#)).
+
+## Media disposal and destruction
+Media disposal and destruction refers to the disposal of hard drives in ServiceNow colocation facilities. ServiceNow follows NIST 800-88 guidelines for destroying hard drives and rendering the media infeasible for future use.
+
+---
+
+# Best practices
+
+### Test your company’s contingency plans related to the ServiceNow AI Platform
+Customers should create and regularly test contingency plans for their ServiceNow installations, using methods such as tabletop exercises. These tests will help verify that communication protocols are clear and procedures function as intended during potential disruptions.
+
+### Regularly review ServiceNow plans, policies, and test reports
+The Information System Contingency Plan (ISCP) and Corporate Business Continuity Management Policy should be checked often to clarify strategies and address stakeholder questions. The ServiceNow ISCP undergoes annual testing, and the outcomes are documented in the ISCP Test Report. It is advisable to review this report at least once per year.
+
+---
+
+# Additional information
+- [Securing the ServiceNow AI Platform white paper](#) (Media disposal section)
+- [Advanced High Availability Architecture (AHA) white paper](#)
+
+The links below require access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](#).
+- [Information system contingency plan and test report](#)
+- [Corporate business continuity management policy](#)
+- [Media sanitization & hardware destruction SOP](#)
+- [ServiceNow Backup and Restoration SOP](#)
+
+---
+
+November 2025 | Release: Zurich
+Page 44
+```

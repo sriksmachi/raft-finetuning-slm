@@ -1,0 +1,39 @@
+```markdown
+# RECOVER
+
+## Business continuity and disaster recovery
+
+### Customer responsibility
+While ServiceNow manages infrastructure-level disaster recovery and system failover, customers should create and maintain business continuity and disaster recovery plans tailored to their processes and risk tolerance for their ServiceNow instance. This plan should include developing internal communication and response strategies.
+
+By proactively addressing these responsibilities, customers help ensure their organization is prepared to respond quickly and effectively in the event of an unexpected disruption.
+
+### ServiceNow responsibility
+ServiceNow operates a disaster recovery program for customer instances called the [Information System Contingency Plan (ISCP)](https://www.servicenow.com/). (Link requires access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](https://www.servicenow.com/).)
+
+ServiceNow has separate business continuity plans and processes, which are tested annually, in place to ensure availability for the ServiceNow corporate organization and the services it relies on.
+
+#### Advanced High Availability (AHA) architecture
+ServiceNow colocation facilities are arranged in regional pairs, with all customer production data hosted in both colocation facilities simultaneously. ServiceNow uses asynchronous database replication to keep these pairs in sync.
+
+When performing maintenance, or if an infrastructure component fails, transfer between active and passive colocation facilities is executed as part of ServiceNow standard operating procedures. This ensures that when AHA is needed to address an instance failure, the transfer will be successful and service disruption minimized.
+
+If the infrastructure hosting the currently active instance experiences a disruption, ServiceNow activates a failover process that transfers customer operations to the unaffected colocation facility. In this model, the targeted recovery point objective (RPO) and recovery time objective (RTO) durations are one and two hours, respectively.
+
+### Backups
+The ServiceNow [Advanced High Availability (AHA)](https://www.servicenow.com/) architecture is the primary means to restore service in the case of a disruption that could impact availability; however, ServiceNow also performs backups of each customer’s instance(s).
+
+In specific scenarios, using more traditional data backup and recovery mechanisms may be appropriate.
+
+Backups are stored in the same colocation facilities where the data resides, with production instances backed up in both colocation facilities in the pair.
+
+- **Full direct-to-disk backups** are performed every seven days and retained for a minimum of 14 days
+- **Differential backups** are taken every 24 hours
+
+Sub-production instances (commonly used for testing and development purposes) are backed up only in their primary colocation facility, because they are not AHA-capable.
+
+---
+
+November 2025 | Release: Zurich
+Page 43
+```

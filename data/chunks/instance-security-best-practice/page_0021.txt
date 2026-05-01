@@ -1,0 +1,36 @@
+```markdown
+# Best practices continued
+
+## Limit concurrent sessions
+Work with your security team to determine if you need to [limit concurrent sessions](#) for the same concurrent interactive sessions to reduce the risk of session hijacking or credential abuse.
+
+## Evaluate adaptive authentication with Session Validation Context
+Evaluate the adaptive authentication’s [Session Validation Context](#) to automatically end user sessions if the session’s IP address changes unexpectedly. This approach helps maintain security by ensuring that only users accessing from their original network context can continue their sessions.
+
+## Activate default deny with High security plugin
+The [High security plugin (HSP)](#) is installed and enabled by default on all new ServiceNow instances. Customers can set a [default deny property](#), which prevents read, write, create, and delete for all tables, unless explicit permission is given for a user or role in an ACL rule. Verify the plugin is enabled.
+
+## Understand the difference between Allow-If and Deny-Unless ACLs
+Allow-If allows access upon successful evaluation and is the default ACL. Deny-Unless denies access unless there is a successful evaluation. Deny-Unless ACLs will take priority against Allow-If ACLs in ACL Evaluation as it will be evaluated first. The Deny-Unless ACL defines the users that will NOT be denied. Said another way, the user will be denied access unless the role, condition, and script requirements are met.
+
+## Verify Security Jump Start—ACL Rules Plugin is enabled
+All new ServiceNow instances have the [Security Jump Start—ACL Rules plugin](#) installed to provide a base level of access security for key system tables. Use this plugin to establish foundational ACL protections for sensitive system data.
+
+## Enable automatic account creation only when necessary
+Automatic account creation allows user accounts to be [created dynamically by email](#). This feature should be used with care. Activate this feature if necessary for a specific use case. Regularly review whether this feature is still needed and disable if not.
+
+## Understand access by ServiceNow personnel
+Collaborate closely with stakeholders to ensure everyone is informed about the circumstances under which ServiceNow personnel may access customer data. Access is restricted to designated customer support employees assigned to open support cases and is only granted with explicit customer authorization. All such access is temporary, tightly controlled, and fully auditable. Customers are encouraged to actively monitor their instance event logs and use the Security Center widget to review access events, ensuring full transparency and reinforcing trust in the security of their data. Customers can identify this activity at any time by tracking the occurrence of the identifier name@snc in the instance event logs.
+
+## Activate the ServiceNow Access Control (SNAC) plugin for enhanced control
+Customers may choose to activate the [ServiceNow access control plugin](#), which enables customers to control which ServiceNow customer service and support employees can access their instance, and when. Review the plugin with stakeholders to determine if it needs to be enabled. Once this control is enabled, ServiceNow personnel must request ad-hoc, time-bound access.
+
+## Use Contextual Security Manager to evaluate table access when possible
+The Contextual Security Manager works alongside the broader security framework at ServiceNow, which includes ACLs that can be applied to individual records and fields within tables. This allows for much more sophisticated access control than simple role-based permissions. The plugin is particularly useful when you need security rules that depend on the specific circumstances of the access request rather than just the user’s assigned roles. This makes it valuable for complex enterprise environments where access requirements vary based on data context, business rules, or dynamic conditions.
+
+---
+
+*November 2025 | Release: Zurich*
+
+Page: 21
+```

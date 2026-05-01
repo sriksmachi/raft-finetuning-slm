@@ -1,0 +1,42 @@
+```markdown
+# Best practices continued
+
+## Enhanced protective controls
+
+### Implement Data Privacy for Now Assist
+Engage stakeholders to assess the need and value of enabling [Data Privacy for Now Assist](#). This solution integrates with the [Generative AI Controller](#) and uses real-time anonymization with configurable data patterns to protect sensitive information before prompts are submitted to the LLM.
+
+### Enable Now Assist Guardian for enhanced protection
+Collaborate with stakeholders to determine whether Now Assist Guardian is needed to safeguard users and data. This feature monitors LLM requests and responses to detect offensive or harmful content, prompt injection attempts, and filtered topics. Offensive content and injection attempts can be logged or blocked based on your configuration. If a filter is triggered, users are redirected to the Sensitivity Detection: Fallback topic in Virtual Agent.
+
+For detailed implementation guidance, refer to the [Now Assist Guardian](#) documentation.
+
+## Leverage AI Control Tower for governance and risk management
+AI Control Tower is a premium offering that gives enterprises visibility into their AI footprint, manages the AI lifecycle, and identifies risks associated with AI investments. AI Control Tower can help ensure that AI models, workflows, and agents are governed, optimized, and aligned with a customer’s business strategy.
+
+Customers should collaborate with stakeholders to evaluate the need and value of AI Control Tower for their organization. This solution can govern AI assets and manage the lifecycle for both ServiceNow and third-party AI applications.
+
+For more information, refer to the [AI Control Tower documentation](#).
+
+---
+
+## Additional information
+
+- [Responsible AI white paper](#)
+- [Now Assist Guardian](#)
+- [Data Privacy for Now Assist](#)
+- [LLM service updates | Model cards](#)
+- [Reference for Generative AI Controller](#)
+
+The links below require access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](#).
+- [Data sharing programs and AI Model improvement (KB1648406)](#)
+- [Model provider support matrix for Now Assist Skills and AI Agents (KB2222333)](#)
+- [Data processing for Advanced AI & Data Products FAQ (KB1584492)](#)
+- [Enterprise artificial intelligence governance policy](#)
+- [Artificial intelligence development policy](#)
+- [ServiceNow artificial intelligence (AI) Services SOC 2 Type 2 Report](#)
+
+---
+
+November 2025 | Release: Zurich
+```

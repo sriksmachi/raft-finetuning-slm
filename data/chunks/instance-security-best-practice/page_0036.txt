@@ -1,0 +1,47 @@
+```markdown
+# File transfers and web services
+
+## Customer responsibility
+Customers are responsible to thoroughly review, select and configure the file transfer methods and web services settings used within the instance, ensuring that all security configurations align with their organization’s policies and standards.
+
+---
+
+## Best practices
+
+### Use encryption to secure outbound file transfers during transit
+Outbound file transfers from a customer’s instance should use secure protocols such as SFTP, FTPS, or SCP to protect data in transit. Outbound clear text protocols such as FTP and HTTP are also supported but not recommended. Inbound transfers such as web uploads are conducted exclusively over HTTPS.
+
+### Consider limiting file attachment types
+Collaborate with stakeholders to determine whether file attachments should be limited by file extension and MIME type. This approach can help prevent potentially malicious files from being uploaded and stored in the instance.
+
+### Monitor antivirus queues for malicious uploads
+Customers should establish a defined process for monitoring uploaded file attachments for potential malicious content, leveraging anti-virus scanning capabilities in the platform. This process should include ongoing collaboration with security teams to analyze, identify, and respond to emerging patterns or trends in suspicious uploads, ensuring proactive protection of the instance and its data.
+
+### Configure inbound REST API rate limiting
+Set rules to limit inbound REST API requests. Customers can create rules that limit the number of inbound REST API requests processed per hour and can also create rules to limit requests for specific users, users with specific roles, or all users.
+
+### Review public REST API endpoints
+Review the identified REST API endpoint and use cases. Determine if unauthenticated users should be allowed access.
+
+### Consider additional restriction policies
+Customers can implement [cross-origin resource sharing (CORS)](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) rules to control which domains can access specific REST API endpoints. Adaptive Authentication policies can be applied specifically to APIs, restricting both the API endpoint and the web methods employed. ACLs can be required for scripted APIs. An API access policy sets permissions and access duration, allowing you to control inbound ServiceNow API access according to authentication type and filter criteria. The following are the three levels of auth policy support for non-interactive sessions:
+
+- **REST API**: Admin can define a global API auth policy or API specific auth policy.
+- **SOAP API**: Admin can define a global API auth policy or API specific auth policy.
+- **System and export processors**: Customer administrators can define processor access policies to secure export endpoints. Administrators can block certain export processors, like CSV, PDF, etc. Export processors can also be associated with an authentication profile. For example, if an authentication profile is required to invoke the CSV processor, the user will need to have an OAuth access token to export a CSV.
+
+**Note**: If you add a global auth policy, then the policy applies for all the REST APIs, SOAP APIs, or System/Export Processors.
+
+---
+
+## Additional information
+- [Scripted Rest APIs](https://developer.servicenow.com/)
+- [API access policy](https://developer.servicenow.com/)
+- [Inbound and outbound web services](https://developer.servicenow.com/)
+- [Create REST API access policy](https://developer.servicenow.com/)
+
+---
+
+November 2025 | Release: Zurich  
+Page 36
+```

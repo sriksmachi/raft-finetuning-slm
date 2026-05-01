@@ -1,0 +1,42 @@
+```markdown
+# Conclusion
+
+This guide offers a comprehensive overview of best practices for securing a ServiceNow instance and should be followed by customer administrators, security personnel, and compliance officers.
+
+Organized around the six principles of the NIST Cybersecurity Framework (Govern, Identify, Protect, Detect, Respond, and Recover), this guide offers actionable recommendations for customers to safeguard their ServiceNow instance, as well as an overview of the ServiceNow responsibilities regarding security.
+
+By following these best practices and engaging relevant security stakeholders, organizations can strengthen their security posture, demonstrate due diligence, and maintain compliance across the ServiceNow AI Platform.
+
+> “By following these best practices and engaging relevant security stakeholders, organizations can strengthen their security posture, demonstrate due diligence, and maintain compliance across ServiceNow AI Platform.”
+
+# Resources
+
+- [Securing the ServiceNow AI Platform white paper](#)
+- [Advanced High Availability white paper](#)
+- [Cloud Security Customer Resources](#)
+- [ServiceNow Trust Site](#)
+- [Legal: Customer Agreements and Terms](#)
+- [ServiceNow product documentation](#)
+- [Cloud Security Alliance (CSA) STAR Level 1 (CAIQ and EU Cloud) and Level 2 (STAR Certification)](#)
+
+The links below require a ServiceNow support account:
+
+- [Shared responsibilities: Encryption](#)
+- [Shared responsibilities: Secure coding](#)
+- [Shared responsibilities: Logging and monitoring](#)
+- [Shared responsibilities: Vulnerability assessments](#)
+
+The links below require access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](#):
+
+- [ServiceNow CORE Compliance Directory](#)
+- [Higher Education Community Vendor Assessment Toolkit (HECVAT)](#)
+- [Standardized Information Gathering (SIG) questionnaire](#)
+
+---
+
+© 2025 ServiceNow, Inc. All rights reserved. ServiceNow, the ServiceNow logo, and other ServiceNow marks are trademarks and/or registered trademarks of ServiceNow, Inc. in the United States and/or other countries. Other company names, product names, and logos may be trademarks of the respective companies with which they are associated.
+
+servicenow.com  
+**Security Best Practices Guide_v4.3**  
+*45*
+```
