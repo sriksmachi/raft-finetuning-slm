@@ -6,28 +6,20 @@ End-to-end pipeline for generating fine-tuning datasets from domain-specific PDF
 
 ## Table of Contents
 
-- [RAFT / RAG Fine-Tuning for Small Language Models](#raft--rag-fine-tuning-for-small-language-models)
-  - [Table of Contents](#table-of-contents)
-  - [Overview](#overview)
-  - [Architecture](#architecture)
-  - [Prerequisites](#prerequisites)
-  - [Environment Setup](#environment-setup)
-    - [1. Clone and create virtual environment](#1-clone-and-create-virtual-environment)
-    - [2. Configure environment variables](#2-configure-environment-variables)
-    - [3. Verify Azure login](#3-verify-azure-login)
-  - [Pipeline Walkthrough](#pipeline-walkthrough)
-    - [Step 1 — Extract text chunks from PDFs](#step-1--extract-text-chunks-from-pdfs)
-    - [Step 2 — Generate RAFT Q\&A/D dataset](#step-2--generate-raft-qad-dataset)
-    - [Step 3 — Fine-tune the model](#step-3--fine-tune-the-model)
-    - [Step 4 — Evaluate with RAGAS](#step-4--evaluate-with-ragas)
-  - [File Reference](#file-reference)
-  - [CLI Reference](#cli-reference)
-    - [`pdf_to_chunks.py`](#pdf_to_chunkspy)
-    - [`raft_datagen.py`](#raft_datagenpy)
-    - [`rag_evaluate.py`](#rag_evaluatepy)
-  - [Dataset Schemas](#dataset-schemas)
-    - [RAFT dataset (`data/training_data_raft/*.jsonl`)](#raft-dataset-datatraining_data_raftjsonl)
-  - [Troubleshooting](#troubleshooting)
+1. [Overview](#overview)
+2. [Architecture](#architecture)
+3. [Prerequisites](#prerequisites)
+4. [Environment Setup](#environment-setup)
+5. [Pipeline Walkthrough](#pipeline-walkthrough)
+   - [Step 1 — Extract text chunks from PDFs](#step-1--extract-text-chunks-from-pdfs)
+   - [Step 2 — Generate RAG Q&A dataset](#step-2--generate-rag-qa-dataset)
+   - [Step 3 — Generate RAFT Q&A/D dataset](#step-3--generate-raft-qad-dataset)
+   - [Step 4 — Fine-tune the model](#step-4--fine-tune-the-model)
+   - [Step 5 — Evaluate with RAGAS](#step-5--evaluate-with-ragas)
+6. [File Reference](#file-reference)
+7. [CLI Reference](#cli-reference)
+8. [Dataset Schemas](#dataset-schemas)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -40,6 +32,7 @@ This project provides:
 | Script | Purpose |
 |--------|---------|
 | `pdf_to_chunks.py` | Convert PDFs → per-page JPEG images → `.txt` chunk files via GPT-4o vision |
+| `rag_datagen.py` | Generate a RAG Q&A dataset (question / answer / context) from chunks |
 | `raft_datagen.py` | Generate a RAFT Q&A/D triplet dataset (question / cot_answer / distractor context) |
 | `rag_evaluate.py` | Evaluate answer quality across models (GPT-4o vs fine-tuned HF model) using RAGAS |
 | `raft-finetuning-slm.ipynb` | Fine-tune Llama-3.2-1B-Instruct on the RAFT dataset using Unsloth + LoRA |
@@ -57,44 +50,33 @@ PDF documents (data/*.pdf)
 │   (Step 1)          │  Output: data/chunks/<pdf-stem>/page_NNNN.txt
 └────────┬────────────┘
          │
-         ▼
-┌──────────────────────┐
-│   raft_datagen.py    │
-│   (Step 2)           │
-│                      │
-│  GPT-4o generates    │
-│  questions + CoT     │
-│  answers + distractors│
-│  parallel workers    │
-│                      │
-│  Output:             │
-│  data/training_data_ │
-│  raft/{train,         │
-│  validation,test}.   │
-│  jsonl               │
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│raft-finetuning-slm   │
-│.ipynb (Step 3)       │
-│                      │
-│  Unsloth + LoRA      │
-│  Llama-3.2-1B-Instruct│
-│  → HF Hub            │
-└──────────┬───────────┘
-           │
-           ▼
-┌─────────────────────┐
-│   rag_evaluate.py   │
-│   (Step 4)          │
-│                     │
-│  RAGAS metrics:     │
-│  - faithfulness     │
-│  - answer_relevancy │
-│  - context_precision│
-│  - context_recall   │
-│                     │
+         ├──────────────────────────────────┐
+         ▼                                  ▼
+┌─────────────────────┐          ┌──────────────────────┐
+│   rag_datagen.py    │          │   raft_datagen.py    │
+│   (Step 2)          │          │   (Step 3)           │
+│                     │          │                      │
+│  GPT-4o JSON mode   │          │  GPT-4o generates    │
+│  5 Q&A pairs/chunk  │          │  questions + CoT     │
+│  parallel workers   │          │  answers + distractors│
+│                     │          │  parallel workers    │
+│  Output:            │          │                      │
+│  data/training_data/│          │  Output:             │
+│  train.jsonl        │          │  data/training_data_ │
+│  test.jsonl         │          │  raft/{train,         │
+└─────────────────────┘          │  validation,test}.   │
+                                 │  jsonl               │
+         ▼                       └──────────┬───────────┘
+┌─────────────────────┐                     │
+│   rag_evaluate.py   │                     ▼
+│   (Step 5)          │          ┌──────────────────────┐
+│                     │          │raft-finetuning-slm   │
+│  RAGAS metrics:     │          │.ipynb (Step 4)       │
+│  - faithfulness     │          │                      │
+│  - answer_relevancy │          │  Unsloth + LoRA      │
+│  - context_precision│          │  Llama-3.2-1B-Instruct│
+│  - context_recall   │◄─────────│  → HF Hub            │
+│                     │          └──────────────────────┘
 │  Output:            │
 │  data/eval_results  │
 │  .csv               │
@@ -176,7 +158,23 @@ Existing files are skipped automatically — safe to re-run after adding new PDF
 
 ---
 
-### Step 2 — Generate RAFT Q&A/D dataset
+### Step 2 — Generate RAG Q&A dataset
+
+Reads `.txt` chunk files and calls GPT-4o in JSON mode to produce question/answer/context triples. Workers run in parallel (8 threads by default).
+
+```bash
+# Full pipeline (extract + generate)
+python rag_datagen.py
+
+# Skip extraction if chunks already exist
+python rag_datagen.py --skip-extract
+```
+
+**Output:** `data/training_data/train.jsonl` and `test.jsonl` (80/20 split).
+
+---
+
+### Step 3 — Generate RAFT Q&A/D dataset
 
 Extends the RAG dataset with RAFT-specific distractor documents. For each chunk, GPT-4o generates:
 - `num_questions` questions
@@ -200,7 +198,7 @@ python raft_datagen.py --help
 
 ---
 
-### Step 3 — Fine-tune the model
+### Step 4 — Fine-tune the model
 
 Open `raft-finetuning-slm.ipynb` (designed for Kaggle GPU environment).
 
@@ -226,7 +224,7 @@ The notebook:
 
 ---
 
-### Step 4 — Evaluate with RAGAS
+### Step 5 — Evaluate with RAGAS
 
 Evaluates answer quality across models using four [RAGAS](https://docs.ragas.io) metrics. GPT-4o acts as the judge LLM for all evaluations.
 
@@ -265,6 +263,7 @@ python rag_evaluate.py --help
 ```
 raft-finetuning-slm/
 ├── pdf_to_chunks.py          # PDF → images → .txt chunks (GPT-4o vision)
+├── rag_datagen.py            # RAG Q&A dataset generator
 ├── raft_datagen.py           # RAFT Q&A/D triplet dataset generator
 ├── rag_evaluate.py           # RAGAS evaluation across models
 ├── raft-finetuning-slm.ipynb # Unsloth LoRA fine-tuning notebook (Kaggle)
@@ -275,6 +274,7 @@ raft-finetuning-slm/
     ├── *.pdf                 # Source domain documents
     ├── images/               # Rendered page images (pdf_to_chunks output)
     ├── chunks/               # Extracted text chunks (pdf_to_chunks output)
+    ├── training_data/        # RAG Q&A dataset (rag_datagen output)
     └── training_data_raft/   # RAFT Q&A/D dataset (raft_datagen output)
 ```
 
@@ -289,6 +289,15 @@ python pdf_to_chunks.py [pdf_path]
 
 Arguments:
   pdf_path    (optional) Path to a specific PDF. Defaults to all PDFs in ./data/
+```
+
+### `rag_datagen.py`
+
+```
+python rag_datagen.py [--skip-extract]
+
+Options:
+  --skip-extract    Skip PDF extraction, use existing chunk files
 ```
 
 ### `raft_datagen.py`
@@ -318,6 +327,16 @@ Options:
 ---
 
 ## Dataset Schemas
+
+### RAG dataset (`data/training_data/*.jsonl`)
+
+```json
+{
+  "question": "What is the recommended patch cycle for OS packages?",
+  "answer":   "Monthly patching is recommended, with critical patches applied within 48 hours.",
+  "context":  "OS packages should be patched on a monthly cycle..."
+}
+```
 
 ### RAFT dataset (`data/training_data_raft/*.jsonl`)
 

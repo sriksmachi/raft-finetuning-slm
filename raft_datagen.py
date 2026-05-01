@@ -3,32 +3,6 @@
 # =============================================================================
 # Generates Question-Document-Answer triplets from a PDF for RAFT fine-tuning.
 # Outputs train/validate/test JSONL files under ./data/training_data/
-#
-# -----------------------------------------------------------------------------
-# How to run
-# -----------------------------------------------------------------------------
-# Prerequisites:
-#   1. Activate the virtual environment:
-#        .\.venv\Scripts\Activate.ps1   (Windows PowerShell)
-#   2. Install dependencies:
-#        pip install -r requirements.txt
-#   3. Authenticate with Azure (used for Azure OpenAI access):
-#        az login
-#   4. Set the following environment variables (e.g. in a .env file):
-#        AZURE_OPENAI_ENDPOINT
-#        AZURE_OPENAI_API_VERSION
-#        AZURE_OPENAI_GPT4O_DEPLOYMENT
-#   5. Place the source PDF at:
-#        ./data/instance-security-best-practice.pdf
-#
-# Usage:
-#   python raft_datagen.py                       # full run (extract + generate)
-#   python raft_datagen.py --skip-extract        # reuse existing chunks
-#   python raft_datagen.py --num-questions 10    # 10 questions per chunk
-#
-# Output:
-#   ./data/training_data_raft/raw/{train,validation,test}.jsonl
-# -----------------------------------------------------------------------------
 
 import logging
 import logging.config
@@ -213,20 +187,16 @@ def add_chunk_to_dataset(
         datapt["id"] = f"seed_task_{i}"
         datapt["type"] = "general"
         datapt["question"] = q
+
         docs = [chunk]
         indices = list(range(0, len(chunks)))
         indices.remove(i)
-        # Add num_distract random chunks as distractors for this question.
-        # These will be shuffled with the oracle chunk in the final context fed to the model, 
-        # so the model can't just learn to pick the first one as the answer.
         for j in random.sample(indices, num_distract):
             docs.append(chunks[j])
 
-        # With probability p, keep the oracle chunk as the first doc; otherwise replace it with a random distractor. 
-        # This creates a mix of "easy" and "hard" examples for the model.
+        # With probability p, keep the oracle chunk as the first doc; otherwise replace it with a random distractor. This creates a mix of "easy" and "hard" examples for the model.
         oracle = random.uniform(0, 1) < p
         if not oracle:
-            # Replace the oracle chunk with a random distractor.
             docs[0] = chunks[random.sample(indices, 1)[0]]
         random.shuffle(docs)
 
@@ -235,14 +205,8 @@ def add_chunk_to_dataset(
         d["sentences"].append(docs)
         datapt["context"] = d
         datapt["oracle_context"] = chunk
-        datapt["type"] = "oracle" if oracle else "distractor"
 
         try:
-            # In the original RAFT methodology, when the "golden" (relevant) document is intentionally omitted from the training instance (leaving only distractors), 
-            # the CoT answer should not say there is no context. Instead, it should provide the correct answer based on the model's internal knowledge
-            # Here I'm using refutal approach. modify the training behavior for queries that are "out-of-bounds" or for which the retriever fails to find a high-confidence match
-            # In these cases, instead of saying "I cannot answer this question as I'm missing the required information", 
-            # the model will be trained to provide a best-effort answer based on its internal knowledge, while also acknowledging the lack of relevant context.
             datapt["cot_answer"] = generate_label(q, chunk)
         except Exception as e:
             log.error("Failed to generate answer for question '%s': %s", q, e, exc_info=True)
@@ -254,7 +218,9 @@ def add_chunk_to_dataset(
         for doc in docs:
             context += "<DOCUMENT>" + str(doc) + "</DOCUMENT>\n"
         
+        
         context += "\n### Question:\n" + q 
+        
         
         datapt["instruction"] = context
 
@@ -297,7 +263,7 @@ def generate_dataset(chunks: list[str], num_questions: int = 5) -> None:
 # 3. Split and save
 # ---------------------------------------------------------------------------
 
-def save_datasets(training_df, output_dir: str = "./data/training_data_raft/raw") -> None:
+def save_datasets(training_df, output_dir: str = "./data/training_data_raft") -> None:
     log.info("Splitting %d rows into train/validate/test sets", len(training_df))
     os.makedirs(output_dir, exist_ok=True)
 
@@ -333,7 +299,7 @@ if __name__ == "__main__":
         pdf_path      = "./data/instance-security-best-practice.pdf"
         pdf_stem      = Path(pdf_path).stem
         chunks_dir    = f"./data/chunks/{pdf_stem}"
-        output_dir    = "./data/training_data_raft/raw"
+        output_dir    = "./data/training_data_raft"
 
         log.info("=" * 60)
         log.info("RAFT data generation started")
