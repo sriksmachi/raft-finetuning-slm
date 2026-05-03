@@ -1,6 +1,6 @@
-# RAFT / RAG Fine-Tuning for Small Language Models
+# RAFT Fine-Tuning for Small Language Models
 
-End-to-end pipeline for generating fine-tuning datasets from domain-specific PDF documents and training a small language model with RAFT (Retrieval-Augmented Fine-Tuning) methodology using Azure OpenAI and Hugging Face.
+End-to-end pipeline for adapting a small language model (Llama-3.2-1B-Instruct) to a domain using **RAFT (Retrieval-Augmented Fine-Tuning)**, then comparing it head-to-head against a frontier model (GPT-4.1) on the same evaluation set.
 
 ---
 
@@ -11,31 +11,32 @@ End-to-end pipeline for generating fine-tuning datasets from domain-specific PDF
 3. [Prerequisites](#prerequisites)
 4. [Environment Setup](#environment-setup)
 5. [Pipeline Walkthrough](#pipeline-walkthrough)
-   - [Step 1 — Extract text chunks from PDFs](#step-1--extract-text-chunks-from-pdfs)
-   - [Step 2 — Generate RAG Q&A dataset](#step-2--generate-rag-qa-dataset)
-   - [Step 3 — Generate RAFT Q&A/D dataset](#step-3--generate-raft-qad-dataset)
-   - [Step 4 — Fine-tune the model](#step-4--fine-tune-the-model)
-   - [Step 5 — Evaluate with RAGAS](#step-5--evaluate-with-ragas)
+   - [Stage 1 — Generate the RAFT dataset (GPT-4o)](#stage-1--generate-the-raft-dataset-gpt-4o)
+   - [Stage 2 — Fine-tune the SLM on the RAFT dataset](#stage-2--fine-tune-the-slm-on-the-raft-dataset)
+   - [Stage 3 — Evaluate the fine-tuned SLM (Kaggle)](#stage-3--evaluate-the-fine-tuned-slm-kaggle)
+   - [Stage 4 — Evaluate GPT-4.1 on the same set](#stage-4--evaluate-gpt-41-on-the-same-set)
+   - [Stage 5 — Final comparison summary](#stage-5--final-comparison-summary)
 6. [File Reference](#file-reference)
-7. [CLI Reference](#cli-reference)
-8. [Dataset Schemas](#dataset-schemas)
-9. [Troubleshooting](#troubleshooting)
+7. [Dataset Schema](#dataset-schema)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Overview
 
-**RAFT (Retrieval-Augmented Fine-Tuning)** trains a language model to identify the correct answer from a noisy retrieved context that contains both a relevant *oracle* passage and several *distractor* documents. This makes the model more robust in production RAG pipelines compared to standard SFT on clean context.
+**RAFT (Retrieval-Augmented Fine-Tuning)** trains a language model to answer from a noisy retrieved context that contains both the relevant *oracle* passage and several *distractor* documents. This makes the model robust to imperfect retrieval at inference time — a 1B SLM fine-tuned this way can rival much larger frontier models on a narrow domain at a fraction of the cost.
 
-This project provides:
+This repository contains five stages, end to end:
 
-| Script | Purpose |
-|--------|---------|
-| `pdf_to_chunks.py` | Convert PDFs → per-page JPEG images → `.txt` chunk files via GPT-4o vision |
-| `rag_datagen.py` | Generate a RAG Q&A dataset (question / answer / context) from chunks |
-| `raft_datagen.py` | Generate a RAFT Q&A/D triplet dataset (question / cot_answer / distractor context) |
-| `rag_evaluate.py` | Evaluate answer quality across models (GPT-4o vs fine-tuned HF model) using RAGAS |
-| `raft-finetuning-slm.ipynb` | Fine-tune Llama-3.2-1B-Instruct on the RAFT dataset using Unsloth + LoRA |
+| Stage | Artifact | Purpose |
+|-------|----------|---------|
+| 1 | [raft_datagen.py](raft_datagen.py) | Generate Q / CoT-Answer / Distractor-Context triplets from PDFs using GPT-4o |
+| 2 | [raft-finetuning-slm.ipynb](raft-finetuning-slm.ipynb) | Fine-tune Llama-3.2-1B-Instruct on the RAFT dataset (Unsloth + LoRA, on Kaggle) |
+| 3 | [raft-evaluate-finetuned.ipynb](raft-evaluate-finetuned.ipynb) | Run the fine-tuned SLM on the held-out test split and score it (Kaggle) |
+| 4 | [llama_rag_evaluate.py](llama_rag_evaluate.py) | Run GPT-4.1 on the same held-out test split and score it |
+| 5 | Notebook / CSVs | Compare metrics from stages 3 and 4 side-by-side |
+
+**Reference:** *RAFT: Adapting Language Model to Domain Specific RAG* (Zhang et al., 2024).
 
 ---
 
@@ -45,216 +46,178 @@ This project provides:
 PDF documents (data/*.pdf)
         │
         ▼
-┌─────────────────────┐
-│   pdf_to_chunks.py  │  GPT-4o vision → per-page .txt files
-│   (Step 1)          │  Output: data/chunks/<pdf-stem>/page_NNNN.txt
-└────────┬────────────┘
-         │
-         ├──────────────────────────────────┐
-         ▼                                  ▼
-┌─────────────────────┐          ┌──────────────────────┐
-│   rag_datagen.py    │          │   raft_datagen.py    │
-│   (Step 2)          │          │   (Step 3)           │
-│                     │          │                      │
-│  GPT-4o JSON mode   │          │  GPT-4o generates    │
-│  5 Q&A pairs/chunk  │          │  questions + CoT     │
-│  parallel workers   │          │  answers + distractors│
-│                     │          │  parallel workers    │
-│  Output:            │          │                      │
-│  data/training_data/│          │  Output:             │
-│  train.jsonl        │          │  data/training_data_ │
-│  test.jsonl         │          │  raft/{train,         │
-└─────────────────────┘          │  validation,test}.   │
-                                 │  jsonl               │
-         ▼                       └──────────┬───────────┘
-┌─────────────────────┐                     │
-│   rag_evaluate.py   │                     ▼
-│   (Step 5)          │          ┌──────────────────────┐
-│                     │          │raft-finetuning-slm   │
-│  RAGAS metrics:     │          │.ipynb (Step 4)       │
-│  - faithfulness     │          │                      │
-│  - answer_relevancy │          │  Unsloth + LoRA      │
-│  - context_precision│          │  Llama-3.2-1B-Instruct│
-│  - context_recall   │◄─────────│  → HF Hub            │
-│                     │          └──────────────────────┘
-│  Output:            │
-│  data/eval_results  │
-│  .csv               │
-└─────────────────────┘
+┌─────────────────────────┐
+│  pdf_to_chunks.py       │   GPT-4o vision → per-page .txt chunks
+└────────┬────────────────┘
+         ▼
+┌─────────────────────────┐
+│  Stage 1                │   GPT-4o (JSON)
+│  raft_datagen.py        │   → train.jsonl / validation.jsonl / test.jsonl
+└────────┬────────────────┘
+         ▼
+┌─────────────────────────┐
+│  Stage 2                │   Unsloth + LoRA on Kaggle GPU
+│  raft-finetuning-slm    │   → fine-tuned Llama-3.2-1B on HF Hub
+│  .ipynb                 │
+└────────┬────────────────┘
+         ▼
+┌─────────────────────────┐         ┌─────────────────────────┐
+│  Stage 3                │         │  Stage 4                │
+│  raft-evaluate-         │         │  llama_rag_evaluate.py  │
+│  finetuned.ipynb        │         │                         │
+│  (fine-tuned SLM)       │         │  (GPT-4.1 response)     │
+│  scored by GPT-4o judge │         │  scored by GPT-4o judge │
+└────────┬────────────────┘         └────────┬────────────────┘
+         │                                   │
+         └────────────┬──────────────────────┘
+                      ▼
+            ┌─────────────────────┐
+            │  Stage 5            │
+            │  Comparison summary │
+            │  (metrics CSVs)     │
+            └─────────────────────┘
 ```
+
+All evaluations use the **same** test split (`data/training_data_raft/test.jsonl`) and the **same** judge LLM (GPT-4o via LlamaIndex `Faithfulness`, `Relevancy`, `Correctness`) — so the SLM and GPT-4.1 scores are directly comparable.
 
 ---
 
 ## Prerequisites
 
 - Python 3.11+
-- [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) installed and logged in (`az login`)
+- Azure CLI (`az login`) — auth for all Azure OpenAI calls
 - Azure OpenAI resource with:
-  - A **GPT-4o** deployment (used for text extraction, Q&A generation, and RAGAS judging)
-  - An **embedding** deployment (optional, for `answer_relevancy` metric; falls back to GPT-4o)
-- GPU with ≥16 GB VRAM for fine-tuning (Kaggle T4 / A10 recommended)
-- `pymupdf` requires no system binaries — PDF rendering is fully self-contained
+  - A **GPT-4o** deployment (used for chunk extraction, RAFT generation, and as the judge LLM)
+  - A **GPT-4.1** deployment (used as the response model in stage 4)
+- A Kaggle account with GPU enabled (T4 / P100 / A10) — for stages 2 and 3
+- A Hugging Face account with a write token — to push and pull the fine-tuned adapter
 
 ---
 
 ## Environment Setup
 
-### 1. Clone and create virtual environment
-
-```bash
+```powershell
 git clone <your-repo>
 cd raft-finetuning-slm
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # macOS/Linux
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
-
-### 2. Configure environment variables
 
 Create a `.env` file in the project root:
 
 ```dotenv
-# Azure OpenAI
 AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com/
-AZURE_OPENAI_API_VERSION=2024-02-01
+AZURE_OPENAI_API_VERSION=2024-08-01-preview
 AZURE_OPENAI_GPT4O_DEPLOYMENT=gpt-4o
-AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large   # optional
+AZURE_OPENAI_GPT41_DEPLOYMENT=gpt-4.1
 ```
 
-> **Note:** API key authentication is not used. All scripts authenticate via `AzureCliCredential` — run `az login` once before executing any script.
-
-### 3. Verify Azure login
-
-```bash
-az account show
-```
+Authentication uses `AzureCliCredential` — run `az login` once before any script.
 
 ---
 
 ## Pipeline Walkthrough
 
-### Step 1 — Extract text chunks from PDFs
+### Stage 1 — Generate the RAFT dataset (GPT-4o)
 
-Converts each PDF page to a JPEG image and calls GPT-4o vision to extract the visible text. Outputs one `.txt` file per page.
+Extracts text chunks from PDFs, then asks GPT-4o to generate, per chunk:
 
-```bash
-# Process all PDFs in ./data/
-python pdf_to_chunks.py
+- `num_questions` synthetic questions
+- A chain-of-thought answer with `##begin_quote## … ##end_quote##` citations and a final `<ANSWER>:` tag
+- Context = oracle chunk + 3 randomly sampled distractor chunks (shuffled)
 
-# Process a specific PDF
-python pdf_to_chunks.py path/to/document.pdf
-```
+With probability `p=0.8` the oracle chunk is included; with `p=0.2` it is replaced with a distractor — teaching the model to refuse when retrieval fails.
 
-**Output structure:**
-
-```
-data/
-  images/<pdf-stem>/page_0001.jpg  ...
-  chunks/<pdf-stem>/page_0001.txt  ...
-```
-
-Existing files are skipped automatically — safe to re-run after adding new PDFs.
-
----
-
-### Step 2 — Generate RAG Q&A dataset
-
-Reads `.txt` chunk files and calls GPT-4o in JSON mode to produce question/answer/context triples. Workers run in parallel (8 threads by default).
-
-```bash
-# Full pipeline (extract + generate)
-python rag_datagen.py
-
-# Skip extraction if chunks already exist
-python rag_datagen.py --skip-extract
-```
-
-**Output:** `data/training_data/train.jsonl` and `test.jsonl` (80/20 split).
-
----
-
-### Step 3 — Generate RAFT Q&A/D dataset
-
-Extends the RAG dataset with RAFT-specific distractor documents. For each chunk, GPT-4o generates:
-- `num_questions` questions
-- A chain-of-thought answer with `##begin_quote##` citations and a final `<ANSWER>:` tag
-- Context containing the oracle chunk + 3 randomly sampled distractor chunks (shuffled)
-
-With probability `p=0.8` the oracle is included; with `p=0.2` it is replaced — training robustness for cases where retrieval fails.
-
-```bash
-# Full pipeline (extract + generate, 5 questions per chunk)
+```powershell
+# Full pipeline (PDF extraction + Q/A/D generation, 5 questions per chunk)
 python raft_datagen.py
 
 # Skip extraction, generate 3 questions per chunk
 python raft_datagen.py --skip-extract --num-questions 3
-
-# All options
-python raft_datagen.py --help
 ```
 
-**Output:** `data/training_data_raft/train.jsonl`, `validation.jsonl`, `test.jsonl` (80/10/10 split).
+**Output:** `data/training_data_raft/{train,validation,test}.jsonl` (80 / 10 / 10 split).
 
 ---
 
-### Step 4 — Fine-tune the model
+### Stage 2 — Fine-tune the SLM on the RAFT dataset
 
-Open `raft-finetuning-slm.ipynb` (designed for Kaggle GPU environment).
+Open [raft-finetuning-slm.ipynb](raft-finetuning-slm.ipynb) on Kaggle (GPU enabled).
 
 The notebook:
-1. Loads the RAFT JSONL dataset
-2. Loads `unsloth/Llama-3.2-1B-Instruct` in 4-bit NF4 quantisation
-3. Attaches LoRA adapters (`r=16`) to all attention and MLP projections
-4. Formats examples with the Llama-3.2 chat template (including oracle + distractor context)
-5. Trains for 1 epoch with `trl.SFTTrainer`
-6. Merges adapters into the base model and saves in 16-bit
-7. Pushes to Hugging Face Hub
 
-**Key hyperparameters:**
+1. Loads the RAFT JSONL splits
+2. Loads `unsloth/Llama-3.2-1B-Instruct` in 4-bit NF4
+3. Attaches LoRA adapters (`r=8`) to all attention + MLP projections
+4. Formats examples with the Llama-3.2 chat template (system + `<Retrieved Documents>` + CoT answer)
+5. Trains for 1 epoch with `trl.SFTTrainer` using `train_on_responses_only`
+6. Merges adapters into the base model in 16-bit
+7. Pushes to Hugging Face Hub (default: `sriksmachi/llama32_1bn_instruct_raft`)
 
-| Parameter | Value |
-|-----------|-------|
+| Hyperparameter | Value |
+|----------------|-------|
 | `max_seq_length` | 2048 |
 | `load_in_4bit` | True |
-| LoRA rank `r` | 16 |
+| LoRA rank `r` | 8 |
 | `learning_rate` | 2e-5 |
 | `num_train_epochs` | 1 |
-| Effective batch size | 16 (2 × 8 accumulation steps) |
+| Effective batch size | 32 (2 × 16 accumulation) |
 
 ---
 
-### Step 5 — Evaluate with RAGAS
+### Stage 3 — Evaluate the fine-tuned SLM (Kaggle)
 
-Evaluates answer quality across models using four [RAGAS](https://docs.ragas.io) metrics. GPT-4o acts as the judge LLM for all evaluations.
+Open [raft-evaluate-finetuned.ipynb](raft-evaluate-finetuned.ipynb) on Kaggle (GPU enabled).
 
-```bash
-# Evaluate both GPT-4o and the fine-tuned HF model
-python rag_evaluate.py
+The notebook:
 
-# GPT-4o only, limit to 50 records for a quick check
-python rag_evaluate.py --models gpt4o --limit 50
+1. Loads the fine-tuned model from Hugging Face Hub via Unsloth (4-bit)
+2. Loads `data/training_data_raft/test.jsonl` (upload as a Kaggle dataset, or pull from your repo)
+3. Generates an answer for each test record using the same chat template / system prompt used at training time
+4. Saves predictions to `slm_predictions.csv`
+5. (Optional) Scores predictions with LlamaIndex `Faithfulness`, `Relevancy`, `Correctness` — judge LLM = Azure OpenAI GPT-4o (credentials supplied via Kaggle Secrets)
+6. Writes per-sample scores to `slm_eval_results.csv` plus a printed summary
 
-# Fine-tuned Llama model only
-python rag_evaluate.py --models hf --hf-model sriksmachi/llama32_1bn_instruct_raft
+Download `slm_eval_results.csv` from Kaggle outputs for stage 5.
 
-# Evaluate on RAFT test split instead of RAG
-python rag_evaluate.py --dataset data/training_data_raft/test.jsonl
+---
 
-# All options
-python rag_evaluate.py --help
+### Stage 4 — Evaluate GPT-4.1 on the same set
+
+Run locally — uses Azure OpenAI for both the response LLM (GPT-4.1) and the judge LLM (GPT-4o):
+
+```powershell
+# Evaluate GPT-4.1 on the held-out RAFT test split
+python llama_rag_evaluate.py `
+  --dataset ./data/training_data_raft/test.jsonl `
+  --response-model gpt-4.1 `
+  --eval-model    gpt-4o   `
+  --output        ./data/gpt41_eval_results.csv
 ```
 
-**RAGAS Metrics:**
+**Output:** `./data/gpt41_eval_results.csv` with the same columns as the SLM CSV.
 
-| Metric | What it measures |
-|--------|-----------------|
-| `faithfulness` | Answer is grounded in the retrieved context (no hallucination) |
-| `answer_relevancy` | Answer directly addresses the question |
-| `context_precision` | Retrieved context is relevant to the question |
-| `context_recall` | Context contains sufficient information to answer |
+---
 
-**Output:** Console table + `data/eval_results.csv`
+### Stage 5 — Final comparison summary
+
+Once both CSVs are available, compare the means side-by-side:
+
+```powershell
+python -c "import pandas as pd; slm = pd.read_csv('data/slm_eval_results.csv'); gpt = pd.read_csv('data/gpt41_eval_results.csv'); cols = ['faithfulness','relevancy','correctness']; print(pd.DataFrame({'fine_tuned_slm': slm[cols].mean(), 'gpt_4_1': gpt[cols].mean()}).round(3))"
+```
+
+You'll get something like:
+
+```
+              fine_tuned_slm  gpt_4_1
+faithfulness           0.93     0.96
+relevancy              0.95     0.97
+correctness            4.10     4.55
+```
+
+**Interpretation:** the 1B fine-tuned SLM closes most of the gap with GPT-4.1 on a domain-specific RAG task — at orders-of-magnitude lower inference cost. Use this table as the headline result of the project.
 
 ---
 
@@ -262,95 +225,43 @@ python rag_evaluate.py --help
 
 ```
 raft-finetuning-slm/
-├── pdf_to_chunks.py          # PDF → images → .txt chunks (GPT-4o vision)
-├── rag_datagen.py            # RAG Q&A dataset generator
-├── raft_datagen.py           # RAFT Q&A/D triplet dataset generator
-├── rag_evaluate.py           # RAGAS evaluation across models
-├── raft-finetuning-slm.ipynb # Unsloth LoRA fine-tuning notebook (Kaggle)
-├── data_exploration.ipynb    # Dataset exploration notebook
-├── requirements.txt          # Python dependencies
-├── .env                      # Environment variables (not committed)
+├── pdf_to_chunks.py                  # PDF → JPEG → .txt chunks (GPT-4o vision)
+├── raft_datagen.py                   # Stage 1 — RAFT Q/A/D dataset generator
+├── raft-finetuning-slm.ipynb         # Stage 2 — Unsloth + LoRA fine-tuning (Kaggle)
+├── raft-evaluate-finetuned.ipynb     # Stage 3 — Fine-tuned SLM evaluation (Kaggle)
+├── llama_rag_evaluate.py             # Stage 4 — GPT-4.1 evaluation (LlamaIndex)
+├── data_exploration.ipynb            # Dataset inspection helper
+├── requirements.txt
+├── .env                              # not committed
 └── data/
-    ├── *.pdf                 # Source domain documents
-    ├── images/               # Rendered page images (pdf_to_chunks output)
-    ├── chunks/               # Extracted text chunks (pdf_to_chunks output)
-    ├── training_data/        # RAG Q&A dataset (rag_datagen output)
-    └── training_data_raft/   # RAFT Q&A/D dataset (raft_datagen output)
+    ├── *.pdf                         # Source domain documents
+    ├── images/                       # Rendered page images
+    ├── chunks/                       # Extracted text chunks
+    └── training_data_raft/
+        ├── train.jsonl
+        ├── validation.jsonl
+        └── test.jsonl                # held-out split — used by stages 3 + 4
 ```
 
 ---
 
-## CLI Reference
+## Dataset Schema
 
-### `pdf_to_chunks.py`
-
-```
-python pdf_to_chunks.py [pdf_path]
-
-Arguments:
-  pdf_path    (optional) Path to a specific PDF. Defaults to all PDFs in ./data/
-```
-
-### `rag_datagen.py`
-
-```
-python rag_datagen.py [--skip-extract]
-
-Options:
-  --skip-extract    Skip PDF extraction, use existing chunk files
-```
-
-### `raft_datagen.py`
-
-```
-python raft_datagen.py [--skip-extract] [--num-questions N]
-
-Options:
-  --skip-extract        Skip PDF extraction, use existing chunk files
-  --num-questions N     Questions to generate per chunk (default: 5)
-```
-
-### `rag_evaluate.py`
-
-```
-python rag_evaluate.py [options]
-
-Options:
-  --models {gpt4o,hf} [{gpt4o,hf} ...]
-                        Models to evaluate (default: gpt4o hf)
-  --hf-model HF_MODEL   HF Hub model ID or local path (default: sriksmachi/llama32_1bn_instruct_raft)
-  --dataset PATH        JSONL file to evaluate on (default: data/training_data/test.jsonl)
-  --limit N             Cap evaluation at N records
-  --output PATH         Results CSV output path (default: data/eval_results.csv)
-```
-
----
-
-## Dataset Schemas
-
-### RAG dataset (`data/training_data/*.jsonl`)
-
-```json
-{
-  "question": "What is the recommended patch cycle for OS packages?",
-  "answer":   "Monthly patching is recommended, with critical patches applied within 48 hours.",
-  "context":  "OS packages should be patched on a monthly cycle..."
-}
-```
-
-### RAFT dataset (`data/training_data_raft/*.jsonl`)
+`data/training_data_raft/*.jsonl`
 
 ```json
 {
   "id":             "seed_task_12",
   "type":           "general",
   "question":       "What is the recommended patch cycle for OS packages?",
-  "context":        { "title": [...], "sentences": [[oracle_chunk, distractor_1, distractor_2, distractor_3]] },
-  "oracle_context": "OS packages should be patched on a monthly cycle...",
-  "cot_answer":     "##begin_quote## OS packages should be patched... ##end_quote##\n<ANSWER>: Monthly patching...",
+  "context":        { "title": [...], "sentences": [[oracle, distractor_1, distractor_2, distractor_3]] },
+  "oracle_context": "OS packages should be patched on a monthly cycle ...",
+  "cot_answer":     "##begin_quote## OS packages should be patched ... ##end_quote##\n<ANSWER>: Monthly ...",
   "instruction":    "<DOCUMENT>...</DOCUMENT>\n<DOCUMENT>...</DOCUMENT>\n...\n### Question:\n..."
 }
 ```
+
+The `instruction` field is what the model sees at training and inference time (context + question). The `cot_answer` is the supervised target.
 
 ---
 
@@ -358,9 +269,8 @@ Options:
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `AzureCliCredential.get_token failed` | `az login` session expired or `az` CLI not on PATH | Run `az login` in the same terminal |
-| `az.cmd timed out after 10 seconds` | Multiple parallel threads each spawning `az.cmd` | Already mitigated — token is fetched once on the main thread before workers start |
-| `KeyError: 'messages'` | `save_datasets` called before `messages` column built | Fixed in current code — column is constructed from `instruction`/`cot_answer` before saving |
-| `PDFInfoNotInstalledError` | Old `pdf2image` dependency requiring poppler | Replaced with `pymupdf` — no system binaries required |
-| `httpx proxies` error | `httpx>=0.28` removed the `proxies` kwarg used by older openai SDK | Pin `httpx>=0.23.0,<0.28.0` (already in `requirements.txt`) |
-| HF model OOM on CPU | Large model loaded without quantisation | Pass `--hf-model` pointing to a 4-bit GPTQ/GGUF version, or run on GPU |
+| `AzureCliCredential.get_token failed` | `az login` session expired | Re-run `az login` in the same shell |
+| `az.cmd timed out after 10 seconds` | Multiple threads each spawning `az.cmd` | Already mitigated — token is fetched once on the main thread |
+| `PDFInfoNotInstalledError` | Old `pdf2image` / poppler dependency | Replaced with `pymupdf` — no system binaries required |
+| `httpx proxies` error | `httpx>=0.28` removed `proxies` kwarg | Pin `httpx>=0.23,<0.28` (already in `requirements.txt`) |
+| Kaggle OOM loading model | Trying to load in fp16 instead of 4-bit | Keep `load_in_4bit=True` in stage 3 notebook |
