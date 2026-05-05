@@ -1,6 +1,6 @@
 # RAFT Fine-Tuning for Small Language Models
 
-End-to-end pipeline for adapting a small language model (Llama-3.2-1B-Instruct) to a domain using **RAFT (Retrieval-Augmented Fine-Tuning)**, then comparing it head-to-head against a frontier model (GPT-4.1) on the same evaluation set.
+End-to-end pipeline for adapting a small language model (Llama-3.2-1B-Instruct) to a domain using **RAFT (Retrieval-Augmented Fine-Tuning)**, then consolidating model outputs for side-by-side inspection.
 
 ---
 
@@ -13,9 +13,9 @@ End-to-end pipeline for adapting a small language model (Llama-3.2-1B-Instruct) 
 5. [Pipeline Walkthrough](#pipeline-walkthrough)
    - [Stage 1 — Generate the RAFT dataset (GPT-4o)](#stage-1--generate-the-raft-dataset-gpt-4o)
    - [Stage 2 — Fine-tune the SLM on the RAFT dataset](#stage-2--fine-tune-the-slm-on-the-raft-dataset)
-   - [Stage 3 — Evaluate the fine-tuned SLM (Kaggle)](#stage-3--evaluate-the-fine-tuned-slm-kaggle)
-   - [Stage 4 — Generate and evaluate GPT-4.1 on the same set](#stage-4--generate-and-evaluate-gpt-41-on-the-same-set)
-   - [Stage 5 — Final comparison summary](#stage-5--final-comparison-summary)
+  - [Stage 3 — Generate fine-tuned SLM predictions (Kaggle)](#stage-3--generate-fine-tuned-slm-predictions-kaggle)
+  - [Stage 4 — Generate GPT-4.1 predictions and merge CSVs](#stage-4--generate-gpt-41-predictions-and-merge-csvs)
+  - [Stage 5 — Explore merged predictions](#stage-5--explore-merged-predictions)
 6. [File Reference](#file-reference)
 7. [Dataset Schema](#dataset-schema)
 8. [Troubleshooting](#troubleshooting)
@@ -32,9 +32,9 @@ This repository contains five stages, end to end:
 |-------|----------|---------|
 | 1 | [raft_datagen.py](raft_datagen.py) | Generate Q / CoT-Answer / Distractor-Context triplets from PDFs using GPT-4o |
 | 2 | [raft-finetuning-slm.ipynb](raft-finetuning-slm.ipynb) | Fine-tune Llama-3.2-1B-Instruct on the RAFT dataset (Unsloth + LoRA, on Kaggle) |
-| 3 | [raft-evaluate-finetuned.ipynb](raft-evaluate-finetuned.ipynb) | Run the fine-tuned SLM on the held-out test split and score it (Kaggle) |
-| 4 | [RAFT_Inference.py](RAFT_Inference.py) + [RAFT_LLAMA_Evaluate.py](RAFT_LLAMA_Evaluate.py) | Run GPT-4.1 on the same held-out test split, save predictions, then score them |
-| 5 | Notebook / CSVs | Compare metrics from stages 3 and 4 side-by-side |
+| 3 | [raft-evaluate-finetuned.ipynb](raft-evaluate-finetuned.ipynb) | Run the fine-tuned SLM on the held-out test split and save predictions (Kaggle) |
+| 4 | [llm_inference.py](llm_inference.py) + [raft_llama_evaluate.py](raft_llama_evaluate.py) | Run GPT-4.1 on the same held-out test split, then merge prediction CSVs |
+| 5 | Notebook / CSVs | Inspect model answers from one combined output file |
 
 **Reference:** *RAFT: Adapting Language Model to Domain Specific RAG* (Zhang et al., 2024).
 
@@ -63,22 +63,22 @@ PDF documents (data/*.pdf)
          ▼
 ┌─────────────────────────┐         ┌─────────────────────────┐
 │  Stage 3                │         │  Stage 4                │
-│  raft-evaluate-         │         │  RAFT_Inference.py      │
-│  finetuned.ipynb        │         │  RAFT_LLAMA_Evaluate.py │
+│  raft-evaluate-         │         │  llm_inference.py       │
+│  finetuned.ipynb        │         │  raft_llama_evaluate.py │
 │  (fine-tuned SLM)       │         │  GPT-4.1 predictions    │
-│  scored by GPT-4o judge │         │  scored by GPT-4o judge │
+│  predictions            │         │  merged CSV             │
 └────────┬────────────────┘         └────────┬────────────────┘
          │                                   │
          └────────────┬──────────────────────┘
                       ▼
             ┌─────────────────────┐
             │  Stage 5            │
-            │  Comparison summary │
-            │  (metrics CSVs)     │
+            │  Combined results   │
+            │  (merged CSV)       │
             └─────────────────────┘
 ```
 
-All evaluations use the **same** test split (`data/training_data_raft/test.jsonl`) and the **same** judge LLM (GPT-4o via LlamaIndex `Faithfulness`, `Relevancy`, `Correctness`) — so the SLM and GPT-4.1 scores are directly comparable.
+All prediction files use the **same** test split (`data/training_data_raft/test.jsonl`), so their answers can be merged and inspected side-by-side.
 
 ---
 
@@ -166,7 +166,7 @@ The notebook:
 
 ---
 
-### Stage 3 — Evaluate the fine-tuned SLM (Kaggle)
+### Stage 3 — Generate fine-tuned SLM predictions (Kaggle)
 
 Open [raft-evaluate-finetuned.ipynb](raft-evaluate-finetuned.ipynb) on Kaggle (GPU enabled).
 
@@ -176,53 +176,43 @@ The notebook:
 2. Loads `data/training_data_raft/test.jsonl` (upload as a Kaggle dataset, or pull from your repo)
 3. Generates an answer for each test record using the same chat template / system prompt used at training time
 4. Saves predictions to `slm_predictions.csv`
-5. (Optional) Scores predictions with LlamaIndex `Faithfulness`, `Relevancy`, `Correctness` — judge LLM = Azure OpenAI GPT-4o (credentials supplied via Kaggle Secrets)
-6. Writes per-sample scores to `slm_eval_results.csv` plus a printed summary
 
-Download `slm_eval_results.csv` from Kaggle outputs for stage 5.
+Download `slm_predictions.csv` from Kaggle outputs for stage 4.
 
 ---
 
-### Stage 4 — Generate and evaluate GPT-4.1 on the same set
+### Stage 4 — Generate GPT-4.1 predictions and merge CSVs
 
-Run locally. First generate GPT-4.1 responses and store them in `output/`, then evaluate those saved responses with LlamaIndex evaluators and the GPT-4o judge:
+Run locally. First generate GPT-4.1 responses and store them in `output/`, then merge those saved responses with the SLM prediction CSVs:
 
 ```powershell
 # Generate GPT-4.1 predictions on the held-out RAFT test split
-python raft_inference.py `
+python llm_inference.py `
   --dataset ./data/training_data_raft/test.jsonl `
   --response-model gpt-4.1 `
-  --output ./output/raft_predictions.csv
+  --output ./output/llm_predictions.csv
 
-# Evaluate saved predictions with LlamaIndex RAG evaluators
+# Merge saved prediction CSVs into one dataframe
 python raft_llama_evaluate.py `
-  --predictions ./output/raft_predictions.csv `
-  --eval-model gpt-4o `
-  --output ./output/raft_llama_eval_results.csv
+  --predictions ./output/llm_predictions.csv ./output/slm_predictions.csv ./output/slm_baseline_predictions.csv `
+  --output ./output/merged_predictions.csv
 ```
 
-**Outputs:** `./output/raft_predictions.csv` for generated responses, including `model_name` and `type` columns, and `./output/raft_llama_eval_results.csv` with the same evaluation columns as the SLM CSV.
+The merge script simply reads the CSVs, adds a `prediction_file` column, concatenates them into one dataframe, and saves the result.
+
+**Outputs:** `./output/llm_predictions.csv` for generated GPT responses, `./output/slm_predictions.csv` for fine-tuned SLM responses, `./output/slm_baseline_predictions.csv` for baseline SLM responses, and `./output/merged_predictions.csv` for the combined dataframe. Prediction CSVs include `model_name`, `id`, and `type` columns.
 
 ---
 
-### Stage 5 — Final comparison summary
+### Stage 5 — Explore merged predictions
 
-Once both CSVs are available, compare the means side-by-side:
+Once the merged CSV is available, inspect model answers side-by-side:
 
 ```powershell
-python -c "import pandas as pd; slm = pd.read_csv('data/slm_eval_results.csv'); gpt = pd.read_csv('output/raft_llama_eval_results.csv'); cols = ['faithfulness','relevancy','correctness']; print(pd.DataFrame({'fine_tuned_slm': slm[cols].mean(), 'gpt_4_1': gpt[cols].mean()}).round(3))"
+python -c "import pandas as pd; df = pd.read_csv('output/merged_predictions.csv'); print(df.groupby(['model_name','type']).size())"
 ```
 
-You'll get something like:
-
-```
-              fine_tuned_slm  gpt_4_1
-faithfulness           0.93     0.96
-relevancy              0.95     0.97
-correctness            4.10     4.55
-```
-
-**Interpretation:** the 1B fine-tuned SLM closes most of the gap with GPT-4.1 on a domain-specific RAG task — at orders-of-magnitude lower inference cost. Use this table as the headline result of the project.
+Use [data_exploration.ipynb](data_exploration.ipynb) to sample questions and compare the `model_answer` values across models.
 
 ---
 
@@ -234,8 +224,8 @@ raft-finetuning-slm/
 ├── raft_datagen.py                   # Stage 1 — RAFT Q/A/D dataset generator
 ├── raft-finetuning-slm.ipynb         # Stage 2 — Unsloth + LoRA fine-tuning (Kaggle)
 ├── raft-evaluate-finetuned.ipynb     # Stage 3 — Fine-tuned SLM evaluation (Kaggle)
-├── RAFT_Inference.py                 # Stage 4 — GPT-4.1 prediction generation
-├── RAFT_LLAMA_Evaluate.py            # Stage 4 — saved prediction evaluation (LlamaIndex)
+├── llm_inference.py                  # Stage 4 — GPT-4.1 prediction generation
+├── raft_llama_evaluate.py            # Stage 4 — merge saved prediction CSVs
 ├── data_exploration.ipynb            # Dataset inspection helper
 ├── requirements.txt
 ├── .env                              # not committed

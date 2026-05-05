@@ -27,7 +27,7 @@ _SYSTEM_PROMPT = (
     "### Step-by-step reasoning: Use several quotes from <Retrieved Documents>: "
     "##begin_quote## [Relevant text 1] ##end_quote## "
     "##begin_quote## [Relevant text 2] ##end_quote## "
-    "Then think step-by-step. <ANSWER>A/B/C/D</ANSWER>"
+    "Then think step-by-step. <ANSWER></ANSWER>"
 )
 
 load_dotenv()
@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--dataset",
-        default="./data/training_data_raft/validation.jsonl",
+        default="./data/training_data_raft/test.jsonl",
         help="Path to input RAFT JSONL file",
     )
     parser.add_argument(
@@ -61,12 +61,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--response-model-name",
-        default=os.getenv("AZURE_OPENAI_RESPONSE_MODEL_NAME", "gpt-4o"),
-        help="OpenAI model identifier for tokenization, e.g. gpt-4o",
+        default=os.getenv("AZURE_OPENAI_RESPONSE_MODEL_NAME", "gpt-4.1"),
+        help="OpenAI model identifier for tokenization, e.g. gpt-4.1",
     )
     parser.add_argument(
         "--output",
-        default="./output/raft_predictions.csv",
+        default="./output/llm_predictions.csv",
         help="Path to predictions CSV",
     )
     parser.add_argument(
@@ -135,6 +135,13 @@ def record_type(record: dict[str, Any]) -> str:
     return ""
 
 
+def record_id(record: dict[str, Any]) -> str:
+    value = record.get("id")
+    if value is None:
+        return ""
+    return str(value)
+
+
 def generate_answer(llm: AzureOpenAI, context: str) -> str:
     user_content = f"<Retrieved Documents>: \n{context}\n\n"
     messages = [
@@ -158,6 +165,7 @@ def process_record(
     model_answer = generate_answer(response_llm, context)
     return {
         "model_name": model_name,
+        "id": record_id(record),
         "type": record_type(record),
         "question": question,
         "context": context,

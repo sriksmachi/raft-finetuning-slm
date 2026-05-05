@@ -15,6 +15,66 @@
 		.reveal section table th, .reveal section table td { padding: 0.3em 0.6em; }
 		.reveal h1, .reveal h2 { color: #4fc3f7; }
 		.reveal section code { color: #ffd54f; }
+		.reveal .model-example-slide {
+			display: flex;
+			flex-direction: column;
+			justify-content: flex-start;
+			gap: 0.55em;
+			box-sizing: border-box;
+			padding: 0.65em 0.55em;
+		}
+		.reveal .model-example-slide h2 {
+			margin: 0;
+			font-size: 1.2em;
+		}
+		.reveal .sample-question {
+			margin: 0;
+			padding: 0.5em 0.65em;
+			border-left: 0.18em solid #ffd54f;
+			border-radius: 0.18em;
+			background: rgba(79, 195, 247, 0.12);
+			font-size: 0.55em;
+			line-height: 1.22;
+		}
+		.reveal .model-answer-grid {
+			display: grid;
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+			gap: 0.42em;
+			width: 100%;
+		}
+		.reveal .model-answer-card {
+			box-sizing: border-box;
+			min-height: 13em;
+			padding: 0.52em;
+			border: 1px solid rgba(79, 195, 247, 0.32);
+			border-radius: 0.22em;
+			background: rgba(255, 255, 255, 0.06);
+		}
+		.reveal .model-answer-card h3 {
+			margin: 0 0 0.38em;
+			color: #ffd54f;
+			font-size: 0.48em;
+			line-height: 1.12;
+			overflow-wrap: anywhere;
+		}
+		.reveal .model-answer-card p {
+			margin: 0;
+			font-size: 0.38em;
+			line-height: 1.25;
+			color: #f4f8fb;
+		}
+		.reveal .model-answer-card .label {
+			display: inline-block;
+			margin-bottom: 0.45em;
+			padding: 0.12em 0.45em;
+			border: 1px solid rgba(255, 213, 79, 0.45);
+			border-radius: 999px;
+			color: #ffd54f;
+			font-size: 0.3em;
+			font-weight: 700;
+			letter-spacing: 0;
+			text-transform: uppercase;
+		}
 	</style>
 </head>
 <body>
@@ -25,6 +85,30 @@
 			         data-separator="^---$"
 			         data-separator-vertical="^--$"
 			         data-charset="utf-8">
+			</section>
+
+			<section class="model-example-slide">
+				<h2>Example Answers Across Models</h2>
+				<p class="sample-question"><strong>Question:</strong> Are ServiceNow trademarks registered internationally?</p>
+				<div class="model-answer-grid">
+					<article class="model-answer-card">
+						<span class="label">Frontier model</span>
+						<h3>GPT-4.1</h3>
+						<p>Yes, ServiceNow trademarks are registered internationally, as they are described as registered trademarks of ServiceNow, Inc. in the United States and/or other countries.</p>
+					</article>
+
+					<article class="model-answer-card">
+						<span class="label">Baseline SLM</span>
+						<h3>unsloth/Llama-3.2-1B-Instruct</h3>
+						<p>The baseline starts a step-by-step response, but drifts into irrelevant implementation-support details instead of directly answering the trademark question.</p>
+					</article>
+
+					<article class="model-answer-card">
+						<span class="label">RAFT fine-tuned SLM</span>
+						<h3>sriksmachi/llama32_1bn_instruct_raft</h3>
+						<p>Yes, ServiceNow trademarks are registered internationally.</p>
+					</article>
+				</div>
 			</section>
 		</div>
 	</div>

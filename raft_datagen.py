@@ -127,12 +127,13 @@ def generate_instructions_gen(chunk: Any, num_questions: int = 5) -> list[str]:
 def encode_question_gen(question: str, chunk: Any) -> list[str]:
     prompt = """
         Question: {question}\n Context: {context}\n
-        Answer this question using the information given in the context above and no prior knowledge. Here is things to pay attention to: 
+        Answer this question using the information given in the context above and no prior knowledge. 
+        Here is things to pay attention to: 
         - First provide step-by-step reasoning on how to answer the question. 
-        - In the reasoning, if you need to copy paste some sentences from the context, include them in ##begin_quote## and ##end_quote##. This would mean that things outside of ##begin_quote## and ##end_quote## are not directly copy paste from the context. 
-        - End your response with final answer in the form <ANSWER>: $answer, the answer should be given in a joyful and friendly tone.
+        - In the reasoning, copy paste some sentences from the context, include them in ##begin_quote## and ##end_quote##. This would mean that things outside of ##begin_quote## and ##end_quote## are not directly copy paste from the context. 
+        - End your response with final answer in the form <ANSWER>: $answer </ANSWER>.
         - If the answer cannot be found in the context, say "I'm sorry, I cannot answer this question as I'm missing the required information"
-        You MUST begin your final answer with the tag "<ANSWER>:".
+        - DO NOT use any information that is not included in the context. 
     """.format(question=question, context=str(chunk))
     return [
         {"role": "system", "content": "You are a helpful question answerer who can provide an answer given a question and relevant context."},
@@ -198,6 +199,7 @@ def add_chunk_to_dataset(
         oracle = random.uniform(0, 1) < p
         if not oracle:
             docs[0] = chunks[random.sample(indices, 1)[0]]
+
         random.shuffle(docs)
 
         d = {"title": [], "sentences": []}
@@ -205,6 +207,7 @@ def add_chunk_to_dataset(
         d["sentences"].append(docs)
         datapt["context"] = d
         datapt["oracle_context"] = chunk
+        datapt["type"] = "oracle" if oracle else "distractor"
 
         try:
             datapt["cot_answer"] = generate_label(q, chunk)
