@@ -125,9 +125,9 @@ Extracts text chunks from PDFs, then asks GPT-4o to generate, per chunk:
 
 - `num_questions` synthetic questions
 - A chain-of-thought answer with `##begin_quote## … ##end_quote##` citations and a final `<ANSWER>:` tag
-- Context = oracle chunk + 3 randomly sampled distractor chunks (shuffled)
+- Context = either oracle chunk + distractor chunks, or distractor-only chunks (shuffled)
 
-With probability `p=0.8` the oracle chunk is included; with `p=0.2` it is replaced with a distractor — teaching the model to refuse when retrieval fails.
+Following the RAFT paper, with probability `p=0.8` the oracle chunk is included with distractors; with probability `1-p=0.2`, no oracle chunk is included and the context contains only distractors. The supervised target remains the oracle-derived answer `A*` in both cases.
 
 ```powershell
 # Full pipeline (PDF extraction + Q/A/D generation, 5 questions per chunk)
@@ -135,6 +135,9 @@ python raft_datagen.py
 
 # Skip extraction, generate 3 questions per chunk
 python raft_datagen.py --skip-extract --num-questions 3
+
+# Use a different oracle inclusion probability p
+python raft_datagen.py --skip-extract --oracle-probability 0.6
 ```
 
 **Output:** `data/training_data_raft/{train,validation,test}.jsonl` (80 / 10 / 10 split).
@@ -250,7 +253,7 @@ raft-finetuning-slm/
   "id":             "seed_task_12",
   "type":           "general",
   "question":       "What is the recommended patch cycle for OS packages?",
-  "context":        { "title": [...], "sentences": [[oracle, distractor_1, distractor_2, distractor_3]] },
+  "context":        { "title": [...], "sentences": [[oracle_or_distractor, distractor_1, distractor_2, distractor_3]] },
   "oracle_context": "OS packages should be patched on a monthly cycle ...",
   "cot_answer":     "##begin_quote## OS packages should be patched ... ##end_quote##\n<ANSWER>: Monthly ...",
   "instruction":    "<DOCUMENT>...</DOCUMENT>\n<DOCUMENT>...</DOCUMENT>\n...\n### Question:\n..."

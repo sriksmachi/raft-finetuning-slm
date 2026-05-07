@@ -24,6 +24,9 @@ from azure.identity import AzureCliCredential
 
 load_dotenv()
 
+DEFAULT_NUM_DISTRACTORS = 3
+DEFAULT_ORACLE_PROBABILITY = 0.8
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -159,12 +162,44 @@ ds: Dataset = Dataset.from_dict({})
 errors: list = []
 
 
+def build_raft_context_docs(
+    chunks: list[str],
+    oracle_index: int,
+    num_distract: int = DEFAULT_NUM_DISTRACTORS,
+    p: float = DEFAULT_ORACLE_PROBABILITY,
+) -> tuple[list[str], bool]:
+    """Build RAFT context docs following the paper's P / 1-P oracle split."""
+    if not 0 <= p <= 1:
+        raise ValueError("p must be between 0 and 1")
+    if num_distract < 0:
+        raise ValueError("num_distract must be non-negative")
+    if not 0 <= oracle_index < len(chunks):
+        raise IndexError("oracle_index is out of range")
+
+    distractor_indices = [idx for idx in range(len(chunks)) if idx != oracle_index]
+    include_oracle = random.random() < p
+    distractor_count = num_distract if include_oracle else num_distract + 1
+
+    if distractor_count > len(distractor_indices):
+        raise ValueError(
+            f"Need {distractor_count} distractor chunk(s), but only "
+            f"{len(distractor_indices)} available."
+        )
+
+    docs = [chunks[idx] for idx in random.sample(distractor_indices, distractor_count)]
+    if include_oracle:
+        docs.append(chunks[oracle_index])
+
+    random.shuffle(docs)
+    return docs, include_oracle
+
+
 def add_chunk_to_dataset(
     chunks: list[str],
     chunk: str,
     num_questions: int = 5,
-    num_distract: int = 3,
-    p: float = 0.8,
+    num_distract: int = DEFAULT_NUM_DISTRACTORS,
+    p: float = DEFAULT_ORACLE_PROBABILITY,
 ) -> None:
     global ds, errors
     i = chunks.index(chunk)
@@ -189,21 +224,15 @@ def add_chunk_to_dataset(
         datapt["type"] = "general"
         datapt["question"] = q
 
-        docs = [chunk]
-        indices = list(range(0, len(chunks)))
-        indices.remove(i)
-        for j in random.sample(indices, num_distract):
-            docs.append(chunks[j])
-
-        # With probability p, keep the oracle chunk as the first doc; otherwise replace it with a random distractor. This creates a mix of "easy" and "hard" examples for the model.
-        oracle = random.uniform(0, 1) < p
-        if not oracle:
-            docs[0] = chunks[random.sample(indices, 1)[0]]
-
-        random.shuffle(docs)
+        try:
+            docs, oracle = build_raft_context_docs(chunks, i, num_distract, p)
+        except Exception as e:
+            log.error("Failed to sample RAFT context for chunk %d: %s", i, e, exc_info=True)
+            errors.append(e)
+            continue
 
         d = {"title": [], "sentences": []}
-        d["title"].append(["placeholder_title"] * (num_distract + 1))
+        d["title"].append(["placeholder_title"] * len(docs))
         d["sentences"].append(docs)
         datapt["context"] = d
         datapt["oracle_context"] = chunk
@@ -217,7 +246,8 @@ def add_chunk_to_dataset(
             continue
 
         context = ""
-        # Docs contain both oracle and distractors, but we want to wrap them in <DOCUMENT> tags to preserve chunk boundaries for the model.
+        # The target answer is generated from the oracle chunk even for distractor-only contexts,
+        # matching RAFT's Q + D_1...D_k -> A* training examples.
         for doc in docs:
             context += "<DOCUMENT>" + str(doc) + "</DOCUMENT>\n"
         
@@ -240,14 +270,25 @@ def add_chunk_to_dataset(
             ds = ds.add_item(datapt)
 
 
-def generate_dataset(chunks: list[str], num_questions: int = 5) -> None:
+def generate_dataset(
+    chunks: list[str],
+    num_questions: int = 5,
+    num_distract: int = DEFAULT_NUM_DISTRACTORS,
+    p: float = DEFAULT_ORACLE_PROBABILITY,
+) -> None:
     global ds, errors
     errors = []
     ds = Dataset.from_dict({})
-    log.info("Starting dataset generation for %d chunks (num_questions=%d)", len(chunks), num_questions)
+    log.info(
+        "Starting dataset generation for %d chunks (num_questions=%d, num_distract=%d, p=%.2f)",
+        len(chunks),
+        num_questions,
+        num_distract,
+        p,
+    )
 
     def process_chunk(chunk):
-        add_chunk_to_dataset(chunks, chunk, num_questions, 3)
+        add_chunk_to_dataset(chunks, chunk, num_questions, num_distract, p)
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [executor.submit(process_chunk, chunk) for chunk in chunks]
@@ -295,10 +336,16 @@ if __name__ == "__main__":
                             help="Skip PDF extraction, use existing chunks")
         parser.add_argument("--num-questions", type=int, default=5,
                             help="Number of questions to generate per chunk (default: 5)")
+        parser.add_argument("--num-distractors", type=int, default=DEFAULT_NUM_DISTRACTORS,
+                    help="Distractor chunks to include with oracle contexts (default: 3)")
+        parser.add_argument("--oracle-probability", type=float, default=DEFAULT_ORACLE_PROBABILITY,
+                    help="Probability p that a sample includes the oracle chunk (default: 0.8)")
         args = parser.parse_args()
 
         skip_extract  = args.skip_extract
         num_questions = args.num_questions
+        num_distract  = args.num_distractors
+        oracle_probability = args.oracle_probability
         pdf_path      = "./data/instance-security-best-practice.pdf"
         pdf_stem      = Path(pdf_path).stem
         chunks_dir    = f"./data/chunks/{pdf_stem}"
@@ -325,8 +372,17 @@ if __name__ == "__main__":
         log.info("Loaded %d chunk(s)", len(chunks))
 
         # Step 3: Generate Q/A/D triplets
-        log.info("Generating %d question(s) per chunk", num_questions)
-        generate_dataset(chunks, num_questions=num_questions)
+        log.info(
+            "Generating %d question(s) per chunk with p=%.2f oracle inclusion",
+            num_questions,
+            oracle_probability,
+        )
+        generate_dataset(
+            chunks,
+            num_questions=num_questions,
+            num_distract=num_distract,
+            p=oracle_probability,
+        )
 
         # Step 4: Format and save
         training_df = ds.to_pandas()
