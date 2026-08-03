@@ -1,0 +1,13 @@
+.git/
+.venv/
+__pycache__/
+.pytest_cache/
+data/
+notebooks/
+output/
+tests/
+azureml-artifacts/
+presentation/
+*.ipynb
+.env
+.env.*

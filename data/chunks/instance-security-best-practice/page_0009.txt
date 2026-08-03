@@ -1,20 +1,28 @@
-```markdown
-# Best practices continued
+GOVERN
 
-## Establish the data retention period and develop appropriate procedures
+White Paper
+
+---
+
+### Best practices continued
+
+**Establish the data retention period and develop appropriate procedures**
+
 Collaborate with stakeholders to assess your organization’s data retention requirements and determine whether existing controls align with these standards.
 
 Customers can define the criteria for archiving records by creating an archive rule, and can use a destroy rule to delete archived records after a specified amount of time.
 
-## Additional information
+---
+
+### Additional information
+
 - [Data Classification](#)
-- [Data Classification standard](#)
-  *(Requires access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](#).)*
+- [Data Classification standard](#)  
+  (Requires access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](#).)
 - [Create an archive rule](#)
 - [Mark records for deletion (destroy rule)](#)
 - [AI Control Tower documentation](#)
 
----
-November 2025 | Release: Zurich  
-Page 9
-```
+November 2025 | Release: Zurich
+
+9

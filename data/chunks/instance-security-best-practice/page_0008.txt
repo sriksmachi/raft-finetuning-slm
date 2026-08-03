@@ -1,38 +1,35 @@
-```markdown
-# Data management and privacy compliance
+GOVERN
+
+White Paper
+
+# Data management and privacy compliance  
 ## Data controller and data processor
 
 ### Customer responsibility
+
 As the data controller, the customer is responsible for determining how data is collected, stored, used, shared, archived, destroyed, and for maintaining the accuracy and confidentiality of that data. The customer is also responsible for meeting their requirements as a data controller under the applicable data protection laws.
 
 Additionally, customers are responsible for risks associated with their AI investments. ServiceNow has a premium offering, called AI Control Tower, that can give customers visibility into their AI footprint by managing their AI asset inventory, configuration, state of AI cases, and approval flows.
 
-For more detail on AI best practices refer to [AI security in the PROTECT section](#).
-
----
+For more detail on AI best practices refer to AI security in the PROTECT section.
 
 ### ServiceNow responsibility
+
 As the data processor, ServiceNow supports the data controllers by providing features to enable access and control of data processing activities and obligations.
 
 ServiceNow has a dedicated Cloud Assurance team responsible for several governance and compliance efforts across the organization, including managing the ServiceNow compliance program. ServiceNow is reviewed on an annual basis by independent third-party auditors. ServiceNow will establish and maintain sufficient controls to meet certification and attestation for the objectives stated in ISO/IEC 27001, 27017, 27018, 27701, 9001, 22301, 42001 (new AI/IT), and SSAE 18 SOC 2 Type 2 (or equivalent standards) for the security program.
 
----
-
 ### Best practices
 
-#### Clarify stakeholder data responsibilities
+**Clarify stakeholder data responsibilities**  
 Set up a process to regularly involve stakeholders in defining data responsibilities, making sure that controls meet internal policies and goals and are working as intended.
 
-#### Classify data in the instance
+**Classify data in the instance**  
 Data classification is available to all customers and enables the identification and classification of stored data for each instance, ensuring that data controls meet organizational requirements, as agreed by the stakeholders.
 
 Data classification is for data that is known. Data discovery allows the discovery of data in comment fields, description fields, or attachments. Data anonymization can be used to mitigate issues and limit risk.
 
-#### Allocate roles within the instance according to data access requirements
+**Allocate roles within the instance according to data access requirements.**  
 Identify which individuals are authorized to access data according to its classification, document these permissions, and establish roles that align with expected access requirements.
 
----
-
-November 2025 | Release: Zurich  
-Page 8
-```
+November 2025 | Release: Zurich                                                                                                                     8

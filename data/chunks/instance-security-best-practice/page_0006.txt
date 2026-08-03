@@ -1,23 +1,49 @@
-```markdown
-# The Shared Responsibility Model
+White Paper
+
+# The Shared Responsibility Model®
 
 Security is a partnership between ServiceNow and the customer, both with specific responsibilities. Therefore, it is essential that each party understands their role in this partnership. Using the extensive capabilities of the ServiceNow AI Platform, customers can configure instances to meet their unique security policies and obligations while also complying with any regional or industry-specific requirements.
 
-- **As the data controller**, the customer determines access rights to their instance and the data it contains. Security controls within the instance enable customers to implement policies appropriate to their own requirements and make decisions on data classification.
+- As the **data controller**, the customer determines access rights to their instance and the data it contains. Security controls within the instance enable customers to implement policies appropriate to their own requirements and make decisions on data classification.
+- As the **data processor**, ServiceNow secures the platform infrastructure and provides tools for security management and monitoring according to customer requirements.
+- The **colocation facility** and the third-party **cloud service provider** (CSP) also have shared responsibilities with the data controller (customer) and data processor (ServiceNow).
 
-- **As the data processor**, ServiceNow secures the platform infrastructure and provides tools for security management and monitoring according to customer requirements.
-
-- **The colocation facility** and the third-party **cloud service provider** (CSP) also have shared responsibilities with the data controller (customer) and data processor (ServiceNow).
-
-For more information about security responsibilities concerning customer data, see the [ServiceNow Shared Responsibility Model overview](#).
+For more information about security responsibilities concerning customer data, see the [ServiceNow Shared Responsibility Model overview](https://www.servicenow.com/).
 
 This document includes shared responsibilities specified at the beginning of each section. Customers should review each customer responsibility with relevant stakeholders to ensure the organization fully understands its obligations as specified in the ServiceNow Shared Responsibility Model. Relevant stakeholders may include architecture teams, security teams, and compliance personnel.
 
-| Area of Responsibility                         | Customer | ServiceNow | Colocation Facility |
-|------------------------------------------------|----------|------------|----------------------|
-| Security contact details                       | ●        | ●          |                      |
-| Data management and privacy compliance         | ●        | ●          |                      |
-| Compliance: Regulatory and legal               | ●        | ●          | ●                    |
-| Physical security and environment controls     | .        | .          | ●                    |
-| Cloud infrastructure security management       |          |            |                      |
-Mid Securty Centers Securely Down Legacy LFTWARE
+| Area of Responsibility | Responsibility | | | |
+| --- | --- | --- | --- | --- |
+|  |  | Customer | ServiceNow | Colocation Facility |
+| Security contact details |  | ● | ● |  |
+| Data management and privacy compliance |  | ● | ● |  |
+| Compliance: Regulatory and legal |  | ● | ● | ● |
+| Physical security and environment controls |  |  | ● | ● |
+| Cloud infrastructure security management |  |  | ● |  |
+| Instance management |  | ● |  |  |
+| Vulnerability management |  | ● | ● |  |
+| Identity and access management |  | ● | ● |  |
+| ServiceNow Security Center (SSC) secure instance configuration |  | ● | ● |  |
+| Data encryption in transit |  | ● | ● |  |
+| Data encryption at rest |  | ● | ● |  |
+| Encryption key management |  | ● | ● |  |
+| AI security |  | ● | ● |  |
+| Secure coding |  | ● | ● |  |
+| MID Server security |  | ● | ● |  |
+| Email security* |  | ● | ● |  |
+| File transfers and web services |  | ● | ● |  |
+| Mobile application security |  | ● | ● |  |
+| Logging and monitoring |  | ● | ● |  |
+| Penetration testing |  | ● | ● |  |
+| Incident management |  | ● | ● |  |
+| Business continuity and disaster recovery |  | ● | ● | ● |
+| Backup and restoration |  | ● | ● |  |
+| Media disposal and destruction |  | ● | ● | ● |
+
+\* Clicking the ![icon](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB) icon in the lower left corner of the following pages will take you back to this page if you are using [Adobe Acrobat Reader](https://www.adobe.com/acrobat/pdf-reader.html) on mobile or desktop.
+
+\* Customers are responsible for configuring aspects of security when they integrate the ServiceNow email capability.
+
+November 2025 | Release: Zurich
+
+6

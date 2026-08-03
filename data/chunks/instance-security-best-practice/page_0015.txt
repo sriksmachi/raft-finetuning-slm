@@ -1,29 +1,41 @@
-```markdown
-# PROTECT  
-## Vulnerability management  
+White Paper
 
-### Customer responsibility  
+PROTECT
+
+# Vulnerability management
+
+---
+
+### Customer responsibility
+
 Customers should apply patches and upgrades in a timely manner and test all configuration changes in a non-production instance before deploying to production. To maintain support and security, customers must ensure their instances comply with ServiceNow EOL.
 
-### ServiceNow responsibility  
-ServiceNow maintains an ongoing infrastructure vulnerability program described in the [Commercial Cloud vulnerability management SOP](#), using third-party commercial and in-house tools to identify vulnerabilities in the ServiceNow perimeter and for all cloud and corporate systems ([link](#) requires access to the ServiceNow CORE Compliance Portal, find out how to access core [here](#)). There are two releases of the ServiceNow AI Platform per year. In addition, patches and hotfixes are produced throughout the supported lifetime of a major release and rolled into the codebase for inclusion in the next version.
+---
+
+### ServiceNow responsibility
+
+ServiceNow maintains an ongoing infrastructure vulnerability program described in the Commercial Cloud vulnerability management SOP, using third-party commercial and in-house tools to identify vulnerabilities in the ServiceNow perimeter and for all cloud and corporate systems (link requires access to the ServiceNow CORE Compliance Portal, find out how to access core here). There are two releases of the ServiceNow AI Platform per year. In addition, patches and hotfixes are produced throughout the supported lifetime of a major release and rolled into the codebase for inclusion in the next version.
 
 ServiceNow publishes Security Advisories to inform customers of relevant vulnerabilities, mitigations, and risks affecting the ServiceNow AI Platform and supporting cloud environments. Through the Patching Program, ServiceNow delivers regular updates that include security, performance, and functional fixes to customer instances. ServiceNow enforces an End-of-Life (EOL) policy to ensure that only supported versions receive updates, helping maintain a secure and stable platform for all customers.
 
-### Best practices  
+---
 
-#### Regularly review the ServiceNow security advisories page  
-These advisories often highlight vulnerabilities addressed through patches or upgrades, ensuring customers can apply updates promptly to maintain security and compliance. Work with stakeholders, such as the security team, when necessary to apply, mitigate and patch the ServiceNow instance, as needed.
+### Best practices
 
-#### Test changes in non-production first  
+#### Regularly review the ServiceNow security advisories page
+
+These advisories often highlight vulnerabilities addressed through patches or upgrades, ensuring customers can apply updates promptly to maintain security and compliance. Work with stakeholders,such as the security team, when necessary to apply, mitigation and patch the ServiceNow instance, as needed.
+
+#### Test changes in non-production first
+
 Before applying any configuration changes to a production environment, it is essential to test them in a non-production instance. This practice helps identify potential issues, ensures compatibility with existing workflows, and reduces the risk of service disruptions.
 
-#### Understand and follow the ServiceNow Patching Program  
+#### Understand and follow the ServiceNow Patching Program
+
 As the instance administrator, it is important to understand and follow the ServiceNow Patching Program. This program updates customer instances to required patch versions periodically throughout the year.
 
 Through these updates, instances receive current security, performance, and functional fixes. Patching addresses known security vulnerabilities and forms a standard part of any patch management process.
 
----
+November 2025 | Release: Zurich
 
-November 2025 | Release: Zurich  
-```
+15

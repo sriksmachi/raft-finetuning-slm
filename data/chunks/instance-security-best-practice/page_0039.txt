@@ -1,36 +1,46 @@
-```markdown
-## Best practices continued
+DETECT
+
+White Paper
+
+Best practices continued
 
 ### Monitor and forward logs to the organization’s SIEM for threat detection
+
 To enhance threat detection and response, organizations should actively monitor and forward relevant log data from their ServiceNow instance to a SIEM following internal security policies.
 
 ### Enable Protected Tables plugin to manage log tampering
+
 Customers should ensure the Protected Tables plugin is enabled on their ServiceNow instance and the protection levels are set. When the `com.glide.security.protected_table.enabled` property is set to true, the protected tables plugin will be used to prevent higher privilege users on an instance from tampering with log tables. Collaborate with the organization’s security team to review and set appropriate protection levels and actions and add specific alerts that may need to be added to monitoring procedures.
 
 ### Review event logs to detect unauthorized access and privilege escalation
+
 Regularly review event logs for login activity and privilege escalation to identify and respond to potential security threats. Event logs provide insights into system activity, including successful and failed login attempts and privilege escalation events.
 
 ### Monitor system logs for configuration changes and errors
+
 Routinely monitor system logs to detect configuration changes, system errors, and unusual data connections that may indicate security or operational issues. System logs contain information about general activity, including configuration changes, system errors, workflows, and inbound/outbound data connections.
 
 ### Review transaction logs to detect malicious web activity
+
 Review transaction logs to identify unusual or malicious web activity, as they provide records of all browser-based interactions with the ServiceNow instance.
 
 ### Enable table auditing for complete record history
+
 Customers can enable auditing for database tables, making record history perpetual and allowing tracking of any changes made to the data since creation. By default, only the incident, problem, and change tables are tracked. For other tables, auditing must be enabled manually.
 
 ### Review import logs to ensure data integrity
+
 Regularly review import logs to track data import activity, including source, status, and timing, to ensure data integrity and detect any anomalies.
 
 ### Use API Analytics to track inbound API usage
+
 Use API Analytics to monitor inbound API usage and users. Customers can track and analyze inbound REST and SOAP activity with API Analytics. These analytics help customers understand which APIs are being used, by whom, and to what degree.
 
 ---
 
-## Additional information
+### Additional information
 
-### Video: ServiceNow Security Solutions: Logging and Monitoring
-
+- Video: ServiceNow Security Solutions: Logging and Monitoring  
 - Shared responsibilities: Logging and monitoring  
 - Log types (system logs)  
 - Log history  
@@ -39,16 +49,14 @@ Use API Analytics to monitor inbound API usage and users. Customers can track an
 - Log Export Service (LES)  
 - Syslog probe  
 - Avoid Log Tampering  
-- Data retention, rotation, cleanup and instance size  
-  *(requires a ServiceNow Support account)*  
+
+- Data retention, rotation, cleanup and instance size (requires a ServiceNow Support account)  
 - Enable protected tables plugin  
 - MID Server command audit log  
 - REST and SOAP request (Outbound web services: Logging)  
 - API Analytics  
 - Configuring auditing for a table  
 
----
+November 2025 | Release: Zurich  
 
-*November 2025 | Release: Zurich*  
-*39*
-```
+39

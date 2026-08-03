@@ -1,11 +1,11 @@
-```markdown
 # AI security
 
-## Customer responsibility
+### Customer responsibility
 
 Customers are responsible for the use and oversight of artificial intelligence (AI) and machine learning (ML) within their ServiceNow instances. Through configuration, customers determine how and when to deploy the AI/ML features within their ServiceNow instance. Customers must review AI/ML use cases and decide whether or not they meet their requirements from regulatory, ethical, and business-use perspectives.
 
-### Consider your AI security strategy:
+**Consider your AI security strategy**
+
 - **Engage key stakeholders**: Identify all stakeholders involved throughout the AI lifecycle and clearly define and document their roles and responsibilities.
 - **Define system purpose**: Clearly articulate the task and intended purpose of each AI system.
 - **Enable human oversight**: Establish procedures that allow authorized personnel to interrupt, override, or halt system operations when necessary.
@@ -13,14 +13,15 @@ Customers are responsible for the use and oversight of artificial intelligence (
 
 Customers should establish accountability for AI-driven processes and implement appropriate controls to guard against unintended outcomes.
 
-### Additionally:
+**Additionally**
+
 - **Document operational boundaries**: Identify user personas and populations, determine who has authority to make changes and control deployment change management, and establish accountability for AI governance policies and procedures. Consider methods intended to maintain security and compliance throughout the AI lifecycle.
-- **Assess AI risks**: Review the [Now LLM model cards](#) to understand each model’s context, intended use, training data, limitations, and other key details.
+- **Assess AI risks**: Review the Now LLM model cards to understand each model’s context, intended use, training data, limitations, and other key details.
 - **Train your teams**: Provide comprehensive, role-specific training for developers, operators, and end users. Training should cover authorization and security protocols, data governance responsibilities, and should be regularly updated to reflect evolving technologies, threats, and regulatory requirements.
 
 ---
 
-## ServiceNow responsibility
+### ServiceNow responsibility
 
 ServiceNow is committed to building and deploying AI responsibly. Our generative AI solutions are designed with human-centric principles, ensuring customers remain in control.
 
@@ -30,12 +31,10 @@ The ServiceNow AI governance process aligns with the NIST Risk Management Framew
 
 To promote fairness and inclusivity, our AI team uses diverse datasets and conducts regular testing to reduce bias. We are committed to transparency about AI usage, limitations, and governance, fostering trust through oversight, expert collaboration, and community feedback.
 
-ServiceNow recently received [ISO 42001 artificial intelligence, management system certification](#), which covers the AI system lifecycle, from the initial concept phase to the final deployment and operation of the system. This certification helps ServiceNow validate its already stringent security practices, which include robust AI governance, supply chain accountability, and adherence to strict obligations. (Link requires access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](#).)
+ServiceNow recently received ISO 42001 artificial intelligence , management system certification, which covers the AI system lifecycle, from the initial concept phase to the final deployment and operation of the system. This certification helps ServiceNow validate its already stringent security practices, which include robust AI governance, supply chain accountability, and adherence to strict obligations. (Link require access to the ServiceNow CORE Compliance Portal. Find out how to access CORE here.)
 
-For more information, read the [Responsible AI white paper](#), which outlines the ServiceNow approach to developing and implementing AI solutions.
+For more information, read the Responsible AI white paper, which outlines the ServiceNow approach to developing and implementing AI solutions.
 
 ---
 
-November 2025 | Release: Zurich  
-28
-```
+November 2025 | Release: Zurich                        28

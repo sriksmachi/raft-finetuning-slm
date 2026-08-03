@@ -14,7 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Keep the repository's reusable Python package; virtual environments are ignored below.
+!lib/
 lib64/
 parts/
 sdist/
@@ -193,6 +194,10 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Local Azure ML notebook artifacts
+azureml-artifacts/
+monitoring/*.json
 
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to

@@ -1,25 +1,31 @@
-```markdown
-# Best practices continued
-
-## Understand the goal of ServiceNow Security Center metrics
-Built-in security metrics in the Security Center provide data on potential threats and trends, allowing users to observe key indicators and set up alerts. These metrics and dashboards are primarily intended for raising awareness rather than continuous monitoring. Organizations with more advanced needs can integrate a Security Information and Event Management (SIEM) solution for real-time tracking and automated response. It is important to assess whether SIEM integration is necessary for your organization’s security team to enhance the capabilities provided by Security Center metrics. For detailed guidance on SIEM integration, refer to the [logging and monitoring section](#).
-
-## Review and complete customer actions promptly
-Increase your instance’s security posture by ensuring that system-recommended Customer Actions are implemented on time.
-
-Customer Actions guide you through scanning, updating, and testing security updates on your instance. Unlike automatic updates applied during family releases or patches, [Customer Actions](#) require manual implementation to address specific security needs.
-
-# Additional information
-- [Video: How Does Security Center Help Me?](#)
-- [Video: ServiceNow Security Center—Hardening](#)
-- [ServiceNow Security Center (SSC)](#)
-- [Security hardening](#)
-- [Security metrics](#)
-- [Security scanner](#)
-- [Custom security scan suites](#)
+White Paper  
 
 ---
 
-November 2025 | Release: Zurich
-Page 24
-```
+### Best practices continued  
+
+#### Understand the goal of ServiceNow Security Center metrics  
+
+Built-in security metrics in the Security Center provide data on potential threats and trends, allowing users to observe key indicators and set up alerts. These metrics and dashboards are primarily intended for raising awareness rather than continuous monitoring. Organizations with more advanced needs can integrate a Security Information and Event Management (SIEM) solution for real-time tracking and automated response. It is important to assess whether SIEM integration is necessary for your organization’s security team to enhance the capabilities provided by Security Center metrics. For detailed guidance on SIEM integration, refer to the logging and monitoring section.  
+
+#### Review and complete customer actions promptly  
+
+Increase your instance’s security posture by ensuring that system-recommended Customer Actions are implemented on time.  
+
+Customer Actions guide you through scanning, updating, and testing security updates on your instance. Unlike automatic updates applied during family releases or patches, Customer Actions require manual implementation to address specific security needs.  
+
+---
+
+### Additional information  
+
+[Video: How Does Security Center Help Me?](#)  [Video: ServiceNow Security Center—Hardening](#)  
+
+- [ServiceNow Security Center (SSC)](#)  
+- [Security hardening](#)  
+- [Security metrics](#)  
+- [Security scanner](#)  
+- [Custom security scan suites](#)  
+
+November 2025 | Release: Zurich  
+
+24

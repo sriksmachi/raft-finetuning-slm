@@ -1,8 +1,14 @@
-```markdown
+PROTECT
+
+White Paper
+
 # ServiceNow Security Center
-## Secure instance configuration
+Secure instance configuration
+
+---
 
 ### Customer responsibility
+
 Users can monitor the [ServiceNow Security Center (SSC)](https://www.servicenow.com) to review hardening settings, security scanner outcomes, and metrics related to instance security. Customers are required to prioritize hardening configuration options in Security Center according to their organization’s requirements.
 
 ---
@@ -10,23 +16,59 @@ Users can monitor the [ServiceNow Security Center (SSC)](https://www.servicenow.
 ### Best practices
 
 #### Establish security hardening priorities
+
 Collaborate with relevant stakeholders to develop a comprehensive hardening plan related to a ServiceNow instance that aligns with the organization’s security strategy and priorities. Create a process to apply the plan to a ServiceNow instance using the security hardening setting in ServiceNow Security Center.
 
 #### Address noncompliance with security hardening and hardening compliance score
+
 Use [Security hardening](https://www.servicenow.com) to identify, test, and assess noncompliance in a sub-production instance. Review the hardening compliance score to determine how closely your instance aligns with SSC hardening recommendations.
 
-*Note: A high compliance score does not guarantee that the instance is fully secure—it only reflects alignment with SSC hardening settings.*
+> **Note:** A high compliance score does not guarantee that the instance is fully secure—it only reflects alignment with SSC hardening settings.
 
 #### Run Security Center security scans regularly
+
 The [Security scanner](https://www.servicenow.com) helps discover and correct access control misconfigurations. Use the Security Scanner built-in to SSC to scan your instance against a set of security checks in order to identify misconfigurations on a regular cadence.
 
-- **Scan comparison:** Compare two scans from the same security suite and view results in a dashboard.
-- **Scan checks:** Identify issues and implement security recommendations for your organization.
-- **Custom scan suites:** Create and schedule custom suites to analyze your instance’s security posture.
-- **Scan findings:** Identify records that violated rules, locate the source record, and review the number of times it triggered specific checks.
+- **Scan comparison**: Compare two scans from the same security suite and view results in a dashboard.  
+- **Scan checks**: Identify issues and implement security recommendations for your organization.  
+- **Custom scan suites**: Create and schedule custom suites to analyze your instance’s security posture.  
+- **Scan findings**: Identify records that violated rules, locate the source record, and review the number of times it triggered specific checks.
 
 ---
 
-*November 2025 | Release: Zurich*  
-Page 23  
-```
+### Security Center
+
+Manage instance security configurations and monitor for key security issues
+
+#### Summary for democaletriallwif17229
+
+Hardening compliance score
+
+Threshold alerts : Last 7 days
+
+Available customer actions
+
+89%  
+Hardening score  
+
+0  
+
+4  
+
+Best practices completed  
+
+1/36  
+
+---
+
+### Identity and Access Management (IAM)
+
+Manage and monitor policies, roles and permissions to help identify misconfigurations and align to best practices.
+
+Access analyzer
+
+---
+
+November 2025 | Release: Zurich
+
+23

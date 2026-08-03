@@ -1,37 +1,40 @@
-```markdown
+White Paper
+
+---
+
 ### Best practices continued
 
 #### Understand Account recovery (ACR) capabilities
+
 When utilizing Single Sign-On (SSO), ensure that at least one Account Recovery (ACR) administrator is registered prior to activation. This precaution secures fallback access to critical systems should primary authentication methods become misconfigured or unavailable. Thoroughly document all ACR procedures, limit access strictly to authorized personnel, and regularly audit ACR usage to uphold strong security standards. Restrict local logins for interactive sessions to approved recovery users with MFA enabled and employ ACR solely as a recovery tool to maintain system integrity.
 
 - ACR removes local login options when SSO is active, for example, local database authentication and LDAP authentication.
-- ACR controls do not apply to non-interactive access, because local database authentication is often needed for inbound integrations. Instead, use API Access Policies to specify accepted authentication types and criteria for REST and SOAP APIs. Authentication profiles for APIs can also be used with [System or Export Processor access policies](#).
+- ACR controls do not apply to non-interactive access, because local database authentication is often needed for inbound integrations. Instead, use API Access Policies to specify accepted authentication types and criteria for REST and SOAP APIs. Authentication profiles for APIs can also be used with System or Export Processor access policies.
 
 ---
 
 ### Additional information
-- [Change default passwords](#)
-- [Configure password policies](#)
-- [Specify lockout for failed login attempts](#)
-- [Restrict access to specific IP ranges](#)
-- [API authentication](#)
-- [Non-interactive sessions](#)
-- [Time-limited authentication](#)
-- [Configuring multi-factor authentication (MFA)](#)
-- [MFA enforcement](#)
-- [MFA Dashboard](#)
-- [Machine Identity Console](#)
-- [Adaptive authentication](#)
-- [Account recovery (ACR)](#)
-- [Access policy for System or Export Processors](#)
 
----
+- Change default passwords  
+- Configure password policies  
+- Specify lockout for failed login attempts  
+- Restrict access to specific IP ranges  
+- API authentication  
+- Non-interactive sessions  
+- Time-limited authentication  
+- Configuring multi-factor authentication (MFA)  
+- MFA enforcement  
+- MFA Dashboard  
+- Machine Identity Console  
+- Adaptive authentication  
+- Account recovery (ACR)  
+- Access policy for System or Export Processors  
 
 The links below require a ServiceNow Support account:
-- [How to limit local login when using single sign-on (SSO)](#)
-- [Password spray attack mitigation strategies](#)
 
----
+- How to limit local login when using single sign-on (SSO)  
+- Password spray attack mitigation strategies  
 
-November 2025 | Release: Zurich
-```
+November 2025 | Release: Zurich  
+
+19

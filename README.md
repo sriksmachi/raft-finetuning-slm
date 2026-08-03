@@ -1,275 +1,157 @@
-# RAFT Fine-Tuning for Small Language Models
+# RAFT Fine-Tuning on Azure Machine Learning
 
-End-to-end pipeline for adapting a small language model (Llama-3.2-1B-Instruct) to a domain using **RAFT (Retrieval-Augmented Fine-Tuning)**, then consolidating model outputs for side-by-side inspection.
+A notebook-led, production-oriented workflow for adapting a small language model to domain-specific, context-grounded question answering with Retrieval-Augmented Fine-Tuning (RAFT).
 
----
-
-## Table of Contents
-
-1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Prerequisites](#prerequisites)
-4. [Environment Setup](#environment-setup)
-5. [Pipeline Walkthrough](#pipeline-walkthrough)
-   - [Stage 1 — Generate the RAFT dataset (GPT-4o)](#stage-1--generate-the-raft-dataset-gpt-4o)
-   - [Stage 2 — Fine-tune the SLM on the RAFT dataset](#stage-2--fine-tune-the-slm-on-the-raft-dataset)
-  - [Stage 3 — Generate fine-tuned SLM predictions (Kaggle)](#stage-3--generate-fine-tuned-slm-predictions-kaggle)
-  - [Stage 4 — Generate GPT-4.1 predictions and merge CSVs](#stage-4--generate-gpt-41-predictions-and-merge-csvs)
-  - [Stage 5 — Explore merged predictions](#stage-5--explore-merged-predictions)
-6. [File Reference](#file-reference)
-7. [Dataset Schema](#dataset-schema)
-8. [Troubleshooting](#troubleshooting)
-
----
-
-## Overview
-
-**RAFT (Retrieval-Augmented Fine-Tuning)** trains a language model to answer from a noisy retrieved context that contains both the relevant *oracle* passage and several *distractor* documents. This makes the model robust to imperfect retrieval at inference time — a 1B SLM fine-tuned this way can rival much larger frontier models on a narrow domain at a fraction of the cost.
-
-This repository contains five stages, end to end:
-
-| Stage | Artifact | Purpose |
-|-------|----------|---------|
-| 1 | [raft_datagen.py](raft_datagen.py) | Generate Q / CoT-Answer / Distractor-Context triplets from PDFs using GPT-4o |
-| 2 | [raft-finetuning-slm.ipynb](raft-finetuning-slm.ipynb) | Fine-tune Llama-3.2-1B-Instruct on the RAFT dataset (Unsloth + LoRA, on Kaggle) |
-| 3 | [raft-evaluate-finetuned.ipynb](raft-evaluate-finetuned.ipynb) | Run the fine-tuned SLM on the held-out test split and save predictions (Kaggle) |
-| 4 | [llm_inference.py](llm_inference.py) + [raft_llama_evaluate.py](raft_llama_evaluate.py) | Run GPT-4.1 on the same held-out test split, then merge prediction CSVs |
-| 5 | Notebook / CSVs | Inspect model answers from one combined output file |
-
-**Reference:** *RAFT: Adapting Language Model to Domain Specific RAG* (Zhang et al., 2024).
-
----
+The active workflow uses Azure Machine Learning data, environment, job, model, endpoint, and schedule assets. Reusable implementation code lives in `lib/`; notebooks explain the data-science decisions and orchestrate those components.
 
 ## Architecture
 
-```
-PDF documents (data/*.pdf)
-        │
-        ▼
-┌─────────────────────────┐
-│  pdf_to_chunks.py       │   GPT-4o vision → per-page .txt chunks
-└────────┬────────────────┘
-         ▼
-┌─────────────────────────┐
-│  Stage 1                │   GPT-4o (JSON)
-│  raft_datagen.py        │   → train.jsonl / validation.jsonl / test.jsonl
-└────────┬────────────────┘
-         ▼
-┌─────────────────────────┐
-│  Stage 2                │   Unsloth + LoRA on Kaggle GPU
-│  raft-finetuning-slm    │   → fine-tuned Llama-3.2-1B on HF Hub
-│  .ipynb                 │
-└────────┬────────────────┘
-         ▼
-┌─────────────────────────┐         ┌─────────────────────────┐
-│  Stage 3                │         │  Stage 4                │
-│  raft-evaluate-         │         │  llm_inference.py       │
-│  finetuned.ipynb        │         │  raft_llama_evaluate.py │
-│  (fine-tuned SLM)       │         │  GPT-4.1 predictions    │
-│  predictions            │         │  merged CSV             │
-└────────┬────────────────┘         └────────┬────────────────┘
-         │                                   │
-         └────────────┬──────────────────────┘
-                      ▼
-            ┌─────────────────────┐
-            │  Stage 5            │
-            │  Combined results   │
-            │  (merged CSV)       │
-            └─────────────────────┘
+```text
+Local PDF/text chunks
+        |
+        v
+01 Data Preparation
+  schema + leakage checks + fingerprint
+        |
+        v
+Azure ML versioned data asset (workspace datastore)
+        |
+        v
+02 Azure ML Fine-Tuning
+  QLoRA command job + MLflow + named model output
+        |
+        v
+Azure ML registered candidate model
+        |
+        v
+03 Inference, Evaluation, and Monitoring
+  zero-traffic deployment -> held-out gate -> promotion
+  SHAP diagnostic + request drift schedule
 ```
 
-All prediction files use the **same** test split (`data/training_data_raft/test.jsonl`), so their answers can be merged and inspected side-by-side.
+## Notebooks
 
----
+Run in order from the repository root or from `notebooks/`:
+
+1. [Data Preparation](notebooks/01_data_preparation.ipynb) validates local RAFT JSONL splits, creates a lineage manifest, and publishes an immutable Azure ML data asset. Synthetic generation is optional and billable.
+2. [Azure ML Fine-Tuning](notebooks/02_azureml_fine_tuning.ipynb) registers a pinned CUDA environment, submits a managed-identity QLoRA job, tracks it with MLflow, stores the merged model in Azure Storage, and registers a candidate model.
+3. [Inference, Evaluation, and Monitoring](notebooks/03_inference_evaluation_monitoring.ipynb) deploys the registered version with zero traffic, runs smoke and held-out tests, applies a promotion gate, logs evaluation evidence, demonstrates target-specific SHAP, and defines scheduled PSI drift detection.
+
+Prior exploratory and Kaggle notebooks are retained under `notebooks/legacy/` for historical reference. They are not part of the production workflow.
+
+## Repository Layout
+
+```text
+.
+├── notebooks/
+│   ├── 01_data_preparation.ipynb
+│   ├── 02_azureml_fine_tuning.ipynb
+│   ├── 03_inference_evaluation_monitoring.ipynb
+│   └── legacy/
+├── lib/
+│   ├── azureml_ops.py       # Jobs, assets, registration, deployment, promotion
+│   ├── config.py            # Environment-driven workspace connection
+│   ├── data.py              # Validation, grouped splits, fingerprint, publication
+│   ├── evaluation.py        # Exact match and answer token-F1
+│   ├── explainability.py    # SHAP adapter for declared scalar text targets
+│   ├── inference.py         # Endpoint invocation and held-out evaluation
+│   ├── monitoring.py        # Reference profiles and PSI drift
+│   ├── monitor_drift.py     # Scheduled monitoring job entry point
+│   ├── train.py             # Remote QLoRA command-job entry point
+│   ├── score.py             # Managed endpoint scoring entry point
+│   └── prompts.py           # Shared training/inference prompt contract
+├── environments/            # Pinned Azure ML conda definitions
+├── data/                    # Local source and RAFT data
+├── output/                  # Historical local predictions
+└── tests/                   # Fast governance and metric tests
+```
 
 ## Prerequisites
 
-- Python 3.11+
-- Azure CLI (`az login`) — auth for all Azure OpenAI calls
-- Azure OpenAI resource with:
-  - A **GPT-4o** deployment (used for chunk extraction, RAFT generation, and as the judge LLM)
-  - A **GPT-4.1** deployment (used as the response model in stage 4)
-- A Kaggle account with GPU enabled (T4 / P100 / A10) — for stages 2 and 3
-- A Hugging Face account with a write token — to push and pull the fine-tuned adapter
+- Python 3.11
+- Azure CLI authenticated with `az login` for local work
+- Azure ML workspace and GPU/CPU compute clusters
+- Permissions to create Azure ML assets, jobs, endpoints, deployments, and schedules
+- Managed identity on compute with least-privilege datastore access
+- Azure Key Vault access for a gated Hugging Face model token
+- Accepted license/access for `meta-llama/Llama-3.2-1B-Instruct`
+- Azure OpenAI only when regenerating synthetic data from local documents
 
----
-
-## Environment Setup
+Install the notebook/control-plane environment:
 
 ```powershell
-git clone <your-repo>
-cd raft-finetuning-slm
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+python -m pip install -r requirements-azureml.txt
+az login
 ```
 
-Create a `.env` file in the project root:
+Set workspace identifiers in `.env` or the process environment:
 
 ```dotenv
-AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com/
+AZURE_SUBSCRIPTION_ID=<subscription-id>
+AZURE_RESOURCE_GROUP=<resource-group>
+AZUREML_WORKSPACE_NAME=<workspace-name>
+
+# Required only for synthetic data generation
+AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/
 AZURE_OPENAI_API_VERSION=2024-08-01-preview
-AZURE_OPENAI_GPT4O_DEPLOYMENT=gpt-4o
-AZURE_OPENAI_GPT41_DEPLOYMENT=gpt-4.1
+AZURE_OPENAI_GPT_DEPLOYMENT=gpt vision
 ```
 
-Authentication uses `AzureCliCredential` — run `az login` once before any script.
+Do not store credentials or tokens in `.env`, notebooks, job parameters, or MLflow. The training job can retrieve a Hugging Face token from Key Vault using managed identity.
 
----
+## Local Data Generation
 
-## Pipeline Walkthrough
-
-### Stage 1 — Generate the RAFT dataset (GPT-4o)
-
-Extracts text chunks from PDFs, then asks GPT-4o to generate, per chunk:
-
-- `num_questions` synthetic questions
-- A chain-of-thought answer with `##begin_quote## … ##end_quote##` citations and a final `<ANSWER>:` tag
-- Context = either oracle chunk + distractor chunks, or distractor-only chunks (shuffled)
-
-Following the RAFT paper, with probability `p=0.8` the oracle chunk is included with distractors; with probability `1-p=0.2`, no oracle chunk is included and the context contains only distractors. The supervised target remains the oracle-derived answer `A*` in both cases.
+The first notebook calls the reusable generator when its generation switch is enabled. The equivalent command is:
 
 ```powershell
-# Full pipeline (PDF extraction + Q/A/D generation, 5 questions per chunk)
-python raft_datagen.py
-
-# Skip extraction, generate 3 questions per chunk
-python raft_datagen.py --skip-extract --num-questions 3
-
-# Use a different oracle inclusion probability p
-python raft_datagen.py --skip-extract --oracle-probability 0.6
+python -m lib.raft_datagen --skip-extract --num-questions 5 --oracle-probability 0.8
 ```
 
-**Output:** `data/training_data_raft/{train,validation,test}.jsonl` (80 / 10 / 10 split).
-
----
-
-### Stage 2 — Fine-tune the SLM on the RAFT dataset
-
-Open [raft-finetuning-slm.ipynb](raft-finetuning-slm.ipynb) on Kaggle (GPU enabled).
-
-The notebook:
-
-1. Loads the RAFT JSONL splits
-2. Loads `unsloth/Llama-3.2-1B-Instruct` in 4-bit NF4
-3. Attaches LoRA adapters (`r=8`) to all attention + MLP projections
-4. Formats examples with the Llama-3.2 chat template (system + `<Retrieved Documents>` + CoT answer)
-5. Trains for 1 epoch with `trl.SFTTrainer` using `train_on_responses_only`
-6. Merges adapters into the base model in 16-bit
-7. Pushes to Hugging Face Hub (default: `sriksmachi/llama32_1bn_instruct_raft`)
-
-| Hyperparameter | Value |
-|----------------|-------|
-| `max_seq_length` | 2048 |
-| `load_in_4bit` | True |
-| LoRA rank `r` | 8 |
-| `learning_rate` | 2e-5 |
-| `num_train_epochs` | 1 |
-| Effective batch size | 32 (2 × 16 accumulation) |
-
----
-
-### Stage 3 — Generate fine-tuned SLM predictions (Kaggle)
-
-Open [raft-evaluate-finetuned.ipynb](raft-evaluate-finetuned.ipynb) on Kaggle (GPU enabled).
-
-The notebook:
-
-1. Loads the fine-tuned model from Hugging Face Hub via Unsloth (4-bit)
-2. Loads `data/training_data_raft/test.jsonl` (upload as a Kaggle dataset, or pull from your repo)
-3. Generates an answer for each test record using the same chat template / system prompt used at training time
-4. Saves predictions to `slm_predictions.csv`
-
-Download `slm_predictions.csv` from Kaggle outputs for stage 4.
-
----
-
-### Stage 4 — Generate GPT-4.1 predictions and merge CSVs
-
-Run locally. First generate GPT-4.1 responses and store them in `output/`, then merge those saved responses with the SLM prediction CSVs:
+To extract page text from PDFs first:
 
 ```powershell
-# Generate GPT-4.1 predictions on the held-out RAFT test split
-python llm_inference.py `
-  --dataset ./data/training_data_raft/test.jsonl `
-  --response-model gpt-4.1 `
-  --output ./output/llm_predictions.csv
-
-# Merge saved prediction CSVs into one dataframe
-python raft_llama_evaluate.py `
-  --predictions ./output/llm_predictions.csv ./output/slm_predictions.csv ./output/slm_baseline_predictions.csv `
-  --output ./output/merged_predictions.csv
+python -m lib.pdf_to_chunks
+python -m lib.raft_datagen --num-questions 5
 ```
 
-The merge script simply reads the CSVs, adds a `prediction_file` column, concatenates them into one dataframe, and saves the result.
+All questions generated from one oracle source chunk remain in the same split. This grouped split is mandatory: row-wise random splitting leaks source evidence across train, validation, and test sets and inflates evaluation.
 
-**Outputs:** `./output/llm_predictions.csv` for generated GPT responses, `./output/slm_predictions.csv` for fine-tuned SLM responses, `./output/slm_baseline_predictions.csv` for baseline SLM responses, and `./output/merged_predictions.csv` for the combined dataframe. Prediction CSVs include `model_name`, `id`, and `type` columns.
+## Dataset Contract
 
----
+Each JSONL record contains:
 
-### Stage 5 — Explore merged predictions
+- `id`: stable sample identifier
+- `type`: `oracle` or `distractor`
+- `question`: synthetic user question
+- `context`: structured retrieved documents
+- `oracle_context`: source evidence used to generate the answer
+- `cot_answer`: supervised grounded response and final `<ANSWER>` span
+- `instruction`: retrieved documents plus question supplied to the model
 
-Once the merged CSV is available, inspect model answers side-by-side:
+Publication fails on missing/empty fields, unsupported sample types, duplicate question/evidence pairs, or source overlap across splits. `manifest.json` records split counts, class balance, creation time, and the SHA-256 fingerprint.
+
+## Production Gates
+
+The notebooks make these controls explicit, but owners must set thresholds from business and risk requirements:
+
+- Data: ownership, consent/license, PII classification, grouped splits, drift baseline, immutable versions
+- Training: managed identity, Key Vault, pinned environment, MLflow lineage, checkpoint policy, cost limits
+- Evaluation: sealed test data, quality by RAFT type, groundedness, abstention, safety, fairness, latency, load, cost
+- Deployment: zero-traffic candidate, private networking, token auth, quotas, staged rollout, rollback deployment
+- Monitoring: request/response governance, error and latency alerts, outcome quality, PSI drift, safety, budget alerts
+- Governance: model/data cards, approver, incident owner, retention, deletion, license and red-team evidence
+
+SHAP is applied only to a declared scalar quality target. It does not provide a general causal explanation of free-form generation.
+
+## Validation
+
+Run fast local checks before submitting cloud jobs:
 
 ```powershell
-python -c "import pandas as pd; df = pd.read_csv('output/merged_predictions.csv'); print(df.groupby(['model_name','type']).size())"
+python -m pytest tests -q
+python -m compileall -q lib
 ```
 
-Use [data_exploration.ipynb](data_exploration.ipynb) to sample questions and compare the `model_answer` values across models.
-
----
-
-## File Reference
-
-```
-raft-finetuning-slm/
-├── pdf_to_chunks.py                  # PDF → JPEG → .txt chunks (GPT-4o vision)
-├── raft_datagen.py                   # Stage 1 — RAFT Q/A/D dataset generator
-├── raft-finetuning-slm.ipynb         # Stage 2 — Unsloth + LoRA fine-tuning (Kaggle)
-├── raft-evaluate-finetuned.ipynb     # Stage 3 — Fine-tuned SLM evaluation (Kaggle)
-├── llm_inference.py                  # Stage 4 — GPT-4.1 prediction generation
-├── raft_llama_evaluate.py            # Stage 4 — merge saved prediction CSVs
-├── data_exploration.ipynb            # Dataset inspection helper
-├── requirements.txt
-├── .env                              # not committed
-└── data/
-    ├── *.pdf                         # Source domain documents
-    ├── images/                       # Rendered page images
-    ├── chunks/                       # Extracted text chunks
-    └── training_data_raft/
-        ├── train.jsonl
-        ├── validation.jsonl
-        └── test.jsonl                # held-out split — used by stages 3 + 4
-```
-
----
-
-## Dataset Schema
-
-`data/training_data_raft/*.jsonl`
-
-```json
-{
-  "id":             "seed_task_12",
-  "type":           "general",
-  "question":       "What is the recommended patch cycle for OS packages?",
-  "context":        { "title": [...], "sentences": [[oracle_or_distractor, distractor_1, distractor_2, distractor_3]] },
-  "oracle_context": "OS packages should be patched on a monthly cycle ...",
-  "cot_answer":     "##begin_quote## OS packages should be patched ... ##end_quote##\n<ANSWER>: Monthly ...",
-  "instruction":    "<DOCUMENT>...</DOCUMENT>\n<DOCUMENT>...</DOCUMENT>\n...\n### Question:\n..."
-}
-```
-
-The `instruction` field is what the model sees at training and inference time (context + question). The `cot_answer` is the supervised target.
-
----
-
-## Troubleshooting
-
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `AzureCliCredential.get_token failed` | `az login` session expired | Re-run `az login` in the same shell |
-| `az.cmd timed out after 10 seconds` | Multiple threads each spawning `az.cmd` | Already mitigated — token is fetched once on the main thread |
-| `PDFInfoNotInstalledError` | Old `pdf2image` / poppler dependency | Replaced with `pymupdf` — no system binaries required |
-| `httpx proxies` error | `httpx>=0.28` removed `proxies` kwarg | Pin `httpx>=0.23,<0.28` (already in `requirements.txt`) |
-| Kaggle OOM loading model | Trying to load in fp16 instead of 4-bit | Keep `load_in_4bit=True` in stage 3 notebook |
+Cloud resources are intentionally not created by tests. Execute notebook cloud cells only after replacing placeholder asset versions, endpoint names, compute names, and governed monitoring URIs.

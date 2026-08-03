@@ -1,33 +1,43 @@
-```markdown
-# Best practices
+PROTECT
 
-## Understand the ServiceNow Data Sharing Program
+White Paper
+
+Best practices
+
+### Understand the ServiceNow Data Sharing Program
+
 Collaborate with relevant stakeholders to fully understand how anonymized data is shared with ServiceNow. Confirm the intended data contribution strategy with appropriate stakeholders. Customers of the Advanced AI and Data Products can opt out of sharing data.
 
-Refer to the [Data Sharing Programs](https://www.servicenow.com/kb/article?sys_kb_id=b16448406) and [AI Model Improvement](https://www.servicenow.com/kb/article?sys_kb_id=b16448406) for details on how ServiceNow collects and uses customer-contributed data to enhance AI models, as per the [product-specific terms](https://www.servicenow.com/store).
+Refer to the Data Sharing Programs and AI Model Improvement (KB1648406) for details on how ServiceNow collects and uses customer-contributed data to enhance AI models, as per the product-specific terms.
 
-- Customers can opt out of anonymized data sharing within 30 days of downloading an AI app from the [ServiceNow Store](https://www.servicenow.com/store).
+- Customers can opt out of anonymized data sharing within 30 days of downloading an AI app from the ServiceNow Store.
 - Data sharing for the Advanced AI and Data Products can be managed from the Now Assist Admin Console.
 
-## Evaluate and configure AI model options on the ServiceNow AI Platform
+### Evaluate and configure AI model options on the ServiceNow AI Platform
+
 Some ServiceNow products rely on third-party Original Equipment Manufacturers (OEM) services, such as Azure OpenAI. Collaborate with your stakeholders to determine whether your organization will use these cloud-based models. If they do not meet your security or compliance requirements, configure ServiceNow to fully opt out of options like Microsoft Azure OpenAI, Google Gemini, or Anthropic Claude on Amazon Web Services (AWS).
 
-*Note:* Certain skills may restrict model provider selection, based on functional or technical limitations. These exceptions are described in [Model Provider Support Matrix for Now Assist Skills and AI Agents (KB2222333)](https://www.servicenow.com/kb/article?sys_kb_id=kb2222333), which outlines supported skills and agents for both the Now LLM and third-party OEM LLMs.
+Note: Certain skills may restrict model provider selection, based on functional or technical limitations. These exceptions are described in Model Provider Support Matrix for Now Assist Skills and AI Agents (KB2222333), which outlines supported skills and agents for both the Now LLM and third-party OEM LLMs.
 
-## Data processing in production
-When using generative AI services, prompts and responses are processed in memory only—inputs and outputs are not stored or cached by the inference infrastructure. For details on how data is transmitted, processed, and protected during runtime, refer to the [Data Processing for Advanced AI & Data Products FAQ (KB1584492)](https://www.servicenow.com/kb/article?sys_kb_id=kb1584492).
+### Data processing in production
+
+When using generative AI services, prompts and responses are processed in memory only—inputs and outputs are not stored or cached by the inference infrastructure. For details on how data is transmitted, processed, and protected during runtime, refer to the Data Processing for Advanced AI & Data Products FAQ (KB1584492).
 
 Evaluate how AI data is securely processed and select either ServiceNow-hosted or third-party LLMs in alignment with your organization’s data residency and governance policies.
 
-*Note:* Third-party LLMs may use global infrastructure to dynamically route traffic to the best available data center for each request. This means the regional processing location may differ from the data center region specified on a customer’s order form.
+Note: Third-party LLMs may use global infrastructure to dynamically route traffic to the best available data center for each request. This means the regional processing location may differ from the data center region specified on a customer’s order form.
 
 Data for the Advanced AI and Data Products (for example, Now Assist) is processed in ServiceNow data centers by default. During periods of high demand, data may “burst” to Microsoft Azure data centers to maintain consistent performance. Customers can configure this “burst” behavior in the Now Assist Admin Console and opt out when they choose.
 
-## Administer Generative AI tools in ServiceNow
+### Administer Generative AI tools in ServiceNow
+
 Customers should provide the necessary information and access to the relevant Now Assist toolset to the appropriate stakeholders. Maintain a clear authorization process and monitor activity as required to ensure secure and compliant operations.
 
 - **Now Assist Admin Console:** Configure, monitor, and troubleshoot Now Assist applications and skills. This includes assigning models at the skill level, tracking usage, and providing visibility into system behavior.
 - **Now Assist Skill Kit:** Equip developers with tools to build and evaluate custom generative AI skills.
 - **Now Assist Data Kit:** Enable developers to manage datasets and create evaluation collections to support custom skill development and testing workflows.
 - **AI Agent Studio:** Offer a no-code interface for designing and managing AI Agents. Developers can define roles, assign tools, and connect agents to existing workflows using natural language configuration.
-```
+
+November 2025 | Release: Zurich
+
+29

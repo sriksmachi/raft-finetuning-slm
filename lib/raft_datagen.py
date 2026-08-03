@@ -1,5 +1,5 @@
 # =============================================================================
-# RAFT & RAG Training Data Generation using GPT-4o
+# RAFT & RAG Training Data Generation using GPT Vision
 # =============================================================================
 # Generates Question-Document-Answer triplets from a PDF for RAFT fine-tuning.
 # Outputs train/validate/test JSONL files under ./data/training_data/
@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 import concurrent.futures
-import numpy as np
 from datasets import Dataset
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -55,9 +54,9 @@ client = AzureOpenAI(
     azure_ad_token=_ad_token,
 )
 
-gpt4o_deployment = os.getenv("AZURE_OPENAI_GPT4O_DEPLOYMENT")
+gpt4o_deployment = os.getenv("AZURE_OPENAI_GPT_DEPLOYMENT")
 
-log.info("GPT-4o deployment: %s", gpt4o_deployment)
+log.info("GPT Vision deployment: %s", gpt4o_deployment)
 
 # ---------------------------------------------------------------------------
 # 1. Load and chunk domain-specific documents
@@ -290,7 +289,7 @@ def generate_dataset(
     def process_chunk(chunk):
         add_chunk_to_dataset(chunks, chunk, num_questions, num_distract, p)
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
         futures = [executor.submit(process_chunk, chunk) for chunk in chunks]
         with tqdm(total=len(chunks), desc="Processing chunks") as pbar:
             for future in concurrent.futures.as_completed(futures):
@@ -311,10 +310,17 @@ def save_datasets(training_df, output_dir: str = "./data/training_data_raft") ->
     log.info("Splitting %d rows into train/validate/test sets", len(training_df))
     os.makedirs(output_dir, exist_ok=True)
 
-    train_df, validate_df, test_df = np.split(
-        training_df.sample(frac=1, random_state=42),
-        [int(.8 * len(training_df)), int(.9 * len(training_df))]
+    source_groups = training_df["oracle_context"].drop_duplicates().sample(
+        frac=1, random_state=42
     )
+    train_end = int(.8 * len(source_groups))
+    validation_end = int(.9 * len(source_groups))
+    train_sources = set(source_groups.iloc[:train_end])
+    validation_sources = set(source_groups.iloc[train_end:validation_end])
+    test_sources = set(source_groups.iloc[validation_end:])
+    train_df = training_df[training_df["oracle_context"].isin(train_sources)]
+    validate_df = training_df[training_df["oracle_context"].isin(validation_sources)]
+    test_df = training_df[training_df["oracle_context"].isin(test_sources)]
     log.info("Split sizes — Train: %d, Validate: %d, Test: %d",
              train_df.shape[0], validate_df.shape[0], test_df.shape[0])
 
@@ -359,7 +365,7 @@ if __name__ == "__main__":
         # Step 1 (optional): extract text chunks from PDF via pdf_to_chunks
         if not skip_extract:
             log.info("Extracting text chunks from PDF ...")
-            import pdf_to_chunks
+            from lib import pdf_to_chunks
             pdf_to_chunks.extract_chunks(pdf_path)
         else:
             log.info("Skipping extraction (--skip-extract)")
