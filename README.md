@@ -18,7 +18,7 @@ Azure ML versioned data asset (workspace datastore)
         |
         v
 02 Azure ML Fine-Tuning
-  QLoRA command job + MLflow + named model output
+  Finetuning command job + MLflow + named model output
         |
         v
 Azure ML registered candidate model
@@ -34,7 +34,7 @@ Azure ML registered candidate model
 Run in order from the repository root:
 
 1. [Data Preparation](notebooks/01_prepare_data.py) extracts PDF chunks, generates and validates local RAFT JSONL splits, and publishes an immutable Azure ML data asset. Synthetic generation is optional and billable.
-2. [Azure ML Fine-Tuning](notebooks/02_azureml_fine_tuning.ipynb) registers a pinned CUDA environment, submits a managed-identity QLoRA job, tracks it with MLflow, stores the merged model in Azure Storage, and registers a candidate model.
+2. [Azure ML Fine-Tuning](notebooks/02_azureml_fine_tuning.ipynb) registers a pinned CUDA environment, submits a managed-identity SLM Finetuning job, tracks it with MLflow, stores the merged model in Azure Storage, and registers a candidate model.
 3. [Inference, Evaluation, and Monitoring](notebooks/03_inference_evaluation_monitoring.ipynb) deploys the registered version with zero traffic, runs smoke and held-out tests, applies a promotion gate, logs evaluation evidence, demonstrates target-specific SHAP, and defines scheduled PSI drift detection.
 
 Prior exploratory and Kaggle notebooks are retained under `notebooks/legacy/` for historical reference. They are not part of the production workflow.
@@ -57,7 +57,7 @@ Prior exploratory and Kaggle notebooks are retained under `notebooks/legacy/` fo
 │   ├── inference.py         # Endpoint invocation and held-out evaluation
 │   ├── monitoring.py        # Reference profiles and PSI drift
 │   ├── monitor_drift.py     # Scheduled monitoring job entry point
-│   ├── train.py             # Remote QLoRA command-job entry point
+│   ├── train.py             # Remote SLM finetuning command-job entry point
 │   ├── score.py             # Managed endpoint scoring entry point
 │   └── prompts.py           # Shared training/inference prompt contract
 ├── environments/            # Pinned Azure ML conda definitions

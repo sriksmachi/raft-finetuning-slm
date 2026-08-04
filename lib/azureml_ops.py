@@ -5,6 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+AZUREML_GPU_BASE_IMAGE = (
+    "mcr.microsoft.com/azureml/"
+    "openmpi4.1.0-cuda11.8-cudnn8-ubuntu22.04"
+    "@sha256:226351a44ce7ddf58d05f71f69284938620e105f525067e19d3225bb61aefd24"
+)
 
 
 def create_training_environment(ml_client, name: str, version: str = "1"):
@@ -13,8 +18,8 @@ def create_training_environment(ml_client, name: str, version: str = "1"):
     environment = Environment(
         name=name,
         version=version,
-        description="Reproducible CUDA environment for RAFT QLoRA fine-tuning",
-        image="nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04",
+        description="Reproducible CUDA environment for RAFT based fine-tuning of SLMs",
+        image=AZUREML_GPU_BASE_IMAGE,
         conda_file=str(PROJECT_ROOT / "environments" / "train-conda.yml"),
     )
     return ml_client.environments.create_or_update(environment)
@@ -27,7 +32,7 @@ def create_inference_environment(ml_client, name: str, version: str = "1"):
         name=name,
         version=version,
         description="Reproducible CUDA environment for RAFT online inference",
-        image="nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04",
+        image=AZUREML_GPU_BASE_IMAGE,
         conda_file=str(PROJECT_ROOT / "environments" / "inference-conda.yml"),
     )
     return ml_client.environments.create_or_update(environment)
@@ -43,6 +48,7 @@ def submit_finetuning_job(
     display_name: str,
     key_vault_name: str | None = None,
     hf_token_secret_name: str | None = None,
+    managed_identity_client_id: str | None = None,
 ):
     from azure.ai.ml import Input, Output, command
     from azure.ai.ml.constants import AssetTypes, InputOutputModes
@@ -54,6 +60,11 @@ def submit_finetuning_job(
             " --key-vault-name ${{inputs.key_vault_name}}"
             " --hf-token-secret-name ${{inputs.hf_token_secret_name}}"
         )
+        if managed_identity_client_id:
+            secret_arguments += (
+                " --managed-identity-client-id "
+                "${{inputs.managed_identity_client_id}}"
+            )
     elif key_vault_name or hf_token_secret_name:
         raise ValueError("Provide both Key Vault name and Hugging Face secret name")
 
@@ -72,6 +83,8 @@ def submit_finetuning_job(
                 "hf_token_secret_name": hf_token_secret_name,
             }
         )
+        if managed_identity_client_id:
+            inputs["managed_identity_client_id"] = managed_identity_client_id
 
     job = command(
         code=str(PROJECT_ROOT),
@@ -90,7 +103,7 @@ def submit_finetuning_job(
         compute=compute,
         experiment_name=experiment_name,
         display_name=display_name,
-        identity=ManagedIdentityConfiguration(),
+        identity=ManagedIdentityConfiguration(client_id=managed_identity_client_id),
         tags={"framework": "RAFT", "stage": "fine-tuning", "model_family": "llama-3.2"},
     )
     return ml_client.jobs.create_or_update(job)

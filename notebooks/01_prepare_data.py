@@ -74,9 +74,13 @@ def generate(args: argparse.Namespace) -> None:
     else:
         log.info("Skipping PDF extraction, reusing %s", args.chunks_dir)
 
-    chunks = raft_datagen.load_chunks_from_dir(args.chunks_dir)[:3]
+    chunks = raft_datagen.load_chunks_from_dir(args.chunks_dir)
+
+    # chunks = chunks[:10]  # Limit to first 10 chunks for testing purposes
+
     if not chunks:
         raise RuntimeError(f"No chunks found in {args.chunks_dir}")
+    
     log.info("Loaded %d chunk(s)", len(chunks))
 
     raft_datagen.generate_dataset(
@@ -116,6 +120,7 @@ def main() -> int:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    logging.getLogger("azure").setLevel(logging.WARNING)
     load_dotenv(PROJECT_ROOT / ".env")
 
     if not args.skip_generation:

@@ -1,4 +1,4 @@
-"""Azure ML command-job entry point for RAFT QLoRA fine-tuning."""
+"""Azure ML command-job entry point for RAFT based fine-tuning of SLMs."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from transformers import (
     BitsAndBytesConfig,
     DataCollatorForSeq2Seq,
     Trainer,
+    TrainerCallback,
     TrainingArguments,
     set_seed,
 )
@@ -38,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--key-vault-name")
     parser.add_argument("--hf-token-secret-name")
+    parser.add_argument("--managed-identity-client-id")
     return parser.parse_args()
 
 
@@ -46,15 +48,32 @@ def main(args: argparse.Namespace) -> None:
     if bool(args.key_vault_name) != bool(args.hf_token_secret_name):
         raise ValueError("Provide both Key Vault name and Hugging Face secret name")
     if args.key_vault_name:
-        from azure.identity import DefaultAzureCredential
+        from azure.core.exceptions import ClientAuthenticationError, HttpResponseError
+        from azure.identity import ManagedIdentityCredential
         from azure.keyvault.secrets import SecretClient
         from huggingface_hub import login
 
         secret_client = SecretClient(
             vault_url=f"https://{args.key_vault_name}.vault.azure.net",
-            credential=DefaultAzureCredential(),
+            credential=ManagedIdentityCredential(
+                client_id=args.managed_identity_client_id
+            ),
         )
-        login(token=secret_client.get_secret(args.hf_token_secret_name).value)
+        try:
+            hf_token = secret_client.get_secret(args.hf_token_secret_name).value
+            if len(hf_token) > 0:
+                print("Successfully retrieved Hugging Face token from Key Vault")
+        except ClientAuthenticationError as exc:
+            raise RuntimeError(
+                "Azure ML compute managed identity is unavailable. Enable a managed "
+                "identity on the compute target before submitting this job."
+            ) from exc
+        except HttpResponseError as exc:
+            raise RuntimeError(
+                "Azure ML compute managed identity could not read the Hugging Face "
+                "token. Grant it Key Vault Secrets User access to the configured vault."
+            ) from exc
+        login(token=hf_token)
 
     data_path = Path(args.data)
     files = {
@@ -62,7 +81,6 @@ def main(args: argparse.Namespace) -> None:
         "validation": str(data_path / "validation.jsonl"),
     }
     dataset = load_dataset("json", data_files=files)
-
     tokenizer = AutoTokenizer.from_pretrained(args.base_model, use_fast=True)
     tokenizer.pad_token = tokenizer.pad_token or tokenizer.eos_token
     tokenizer.padding_side = "right"
@@ -73,12 +91,14 @@ def main(args: argparse.Namespace) -> None:
         bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
         bnb_4bit_use_double_quant=True,
     )
+
     model = AutoModelForCausalLM.from_pretrained(
         args.base_model,
         quantization_config=quantization,
         device_map="auto",
         torch_dtype="auto",
     )
+    
     model.config.use_cache = False
     model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
     model = get_peft_model(
@@ -148,13 +168,25 @@ def main(args: argparse.Namespace) -> None:
         warmup_ratio=0.03,
         lr_scheduler_type="linear",
         optim="paged_adamw_8bit",
-        report_to=["mlflow"],
+        report_to=[],
+        label_names=["labels"],
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         seed=args.seed,
     )
-    mlflow.transformers.autolog(log_models=False)
+
+    class MlflowMetricsCallback(TrainerCallback):
+        def on_log(self, args, state, control, logs=None, **kwargs):
+            metrics = {}
+            for name, value in (logs or {}).items():
+                try:
+                    metrics[name] = float(value)
+                except (TypeError, ValueError):
+                    continue
+            if metrics:
+                mlflow.log_metrics(metrics, step=state.global_step)
+
     with mlflow.start_run() as run:
         logged_parameters = vars(args).copy()
         logged_parameters.pop("hf_token_secret_name", None)
@@ -177,6 +209,7 @@ def main(args: argparse.Namespace) -> None:
                 label_pad_token_id=-100,
                 pad_to_multiple_of=8,
             ),
+            callbacks=[MlflowMetricsCallback()],
         )
         trainer.train()
         metrics = trainer.evaluate()

@@ -2,7 +2,7 @@ name: raft-train
 channels:
   - conda-forge
 dependencies:
-  - python=3.11
+  - python=3.12.10
   - pip
   - pip:
       - azureml-mlflow==1.60.0

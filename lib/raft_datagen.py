@@ -9,7 +9,6 @@ import logging.config
 import os
 import random
 import re
-import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -71,7 +70,8 @@ log.info("Azure OpenAI token scope: %s", token_scope)
 # ---------------------------------------------------------------------------
 
 def remove_special_characters(string: str) -> str:
-    return re.sub(r'[^a-zA-Z0-9\s]', '', string)
+    cleaned = re.sub(r'[^a-zA-Z0-9\s]', '', string)
+    return re.sub(r'\s+', ' ', cleaned).strip()
 
 
 def load_chunks_from_dir(
@@ -89,12 +89,16 @@ def load_chunks_from_dir(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
     )
+
     chunks: list[str] = []
+
     for text in page_texts:
         for split in splitter.split_text(text):
             if len(remove_special_characters(split)) > 100:
-                chunks.append(split)
+                chunks.append(remove_special_characters(split))
+
     log.info("%d chunk(s) after splitting and filtering", len(chunks))
+    
     return chunks
 
 
@@ -240,11 +244,10 @@ def add_chunk_to_dataset(
             errors.append(e)
             continue
 
-        d = {"title": [], "sentences": []}
-        d["title"].append(["placeholder_title"] * len(docs))
+        d = { "sentences": []}
         d["sentences"].append(docs)
-        datapt["context"] = d
-        datapt["oracle_context"] = chunk
+        datapt["context"] = d # this can be a list of distractor chunks and the oracle chunk, but we will use the oracle chunk for generating the answer
+        datapt["oracle_context"] = chunk # this is the oracle chunk that contains the answer to the question
         datapt["type"] = "oracle" if oracle else "distractor"
 
         try:
@@ -337,78 +340,3 @@ def save_datasets(training_df, output_dir: str = "./data/training_data_raft") ->
     validate_df.to_json(f"{output_dir}/validation.jsonl", orient="records", lines=True)
     test_df.to_json(f"{output_dir}/test.jsonl", orient="records", lines=True)
     log.info("Saved train/validation/test datasets to '%s/'", output_dir)
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    try:
-        import argparse
-        parser = argparse.ArgumentParser(description="RAFT dataset generation")
-        parser.add_argument("--skip-extract", action="store_true",
-                            help="Skip PDF extraction, use existing chunks")
-        parser.add_argument("--num-questions", type=int, default=5,
-                            help="Number of questions to generate per chunk (default: 5)")
-        parser.add_argument("--num-distractors", type=int, default=DEFAULT_NUM_DISTRACTORS,
-                    help="Distractor chunks to include with oracle contexts (default: 3)")
-        parser.add_argument("--oracle-probability", type=float, default=DEFAULT_ORACLE_PROBABILITY,
-                    help="Probability p that a sample includes the oracle chunk (default: 0.8)")
-        args = parser.parse_args()
-
-        skip_extract  = args.skip_extract
-        num_questions = args.num_questions
-        num_distract  = args.num_distractors
-        oracle_probability = args.oracle_probability
-        pdf_path      = "./data/instance-security-best-practice.pdf"
-        pdf_stem      = Path(pdf_path).stem
-        chunks_dir    = f"./data/chunks/{pdf_stem}"
-        output_dir    = "./data/training_data_raft"
-
-        log.info("=" * 60)
-        log.info("RAFT data generation started")
-        log.info("=" * 60)
-        log.info("Source PDF: %s", pdf_path)
-
-        # Step 1 (optional): extract text chunks from PDF via pdf_to_chunks
-        if not skip_extract:
-            log.info("Extracting text chunks from PDF ...")
-            from lib import pdf_to_chunks
-            pdf_to_chunks.extract_chunks(pdf_path)
-        else:
-            log.info("Skipping extraction (--skip-extract)")
-
-        # Step 2: load and sub-chunk
-        chunks = load_chunks_from_dir(chunks_dir)
-        if not chunks:
-            log.error("No chunks found in '%s'. Run without --skip-extract first.", chunks_dir)
-            sys.exit(1)
-        log.info("Loaded %d chunk(s)", len(chunks))
-
-        # Step 3: Generate Q/A/D triplets
-        log.info(
-            "Generating %d question(s) per chunk with p=%.2f oracle inclusion",
-            num_questions,
-            oracle_probability,
-        )
-        generate_dataset(
-            chunks,
-            num_questions=num_questions,
-            num_distract=num_distract,
-            p=oracle_probability,
-        )
-
-        # Step 4: Format and save
-        training_df = ds.to_pandas()
-        log.info("%d rows after dropping nulls", len(training_df))
-
-        save_datasets(training_df, output_dir)
-
-        log.info("=" * 60)
-        log.info("RAFT data generation complete")
-        log.info("=" * 60)
-        sys.exit(0)
-    except Exception:
-        log.exception("Fatal error — aborting")
-        sys.exit(1)
