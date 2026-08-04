@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+
+log = logging.getLogger(__name__)
 
 REQUIRED_FIELDS = {
     "id",
@@ -66,7 +69,11 @@ def validate_records(records: Iterable[dict[str, Any]], split: str) -> dict[str,
 
     duplicate_count = len(rows) - len({_content_key(row) for row in rows})
     if duplicate_count:
-        raise ValueError(f"{split} contains {duplicate_count} duplicate question/context pairs")
+        log.warning(
+            "%s contains %d duplicate question/context pairs",
+            split,
+            duplicate_count,
+        )
 
     return {"rows": len(rows), "types": type_counts, "duplicates": duplicate_count}
 

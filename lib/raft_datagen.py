@@ -12,14 +12,14 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
-import concurrent.futures
 from datasets import Dataset
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import AzureOpenAI
 from tqdm import tqdm
-from azure.identity import AzureCliCredential
+from azure.identity import AzureCliCredential, get_bearer_token_provider
 
 load_dotenv()
 
@@ -42,21 +42,29 @@ log = logging.getLogger(__name__)
 # Azure OpenAI client
 # ---------------------------------------------------------------------------
 
-# Fetch the token once on the main thread so parallel worker threads share a
-# single cached credential — avoids concurrent az-cli subprocess timeouts.
-_ad_token = AzureCliCredential().get_token(
-    "https://cognitiveservices.azure.com/.default"
-).token
+azure_openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+endpoint_host = urlparse(azure_openai_endpoint).hostname or ""
+token_scope = os.getenv("AZURE_OPENAI_TOKEN_SCOPE") or (
+    "https://ai.azure.com/.default"
+    if endpoint_host.endswith(".services.ai.azure.com")
+    else "https://cognitiveservices.azure.com/.default"
+)
+
+_token_provider = get_bearer_token_provider(
+    AzureCliCredential(),
+    token_scope,
+)
 
 client = AzureOpenAI(
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    azure_endpoint=azure_openai_endpoint,
     api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    azure_ad_token=_ad_token,
+    azure_ad_token_provider=_token_provider,
 )
 
 gpt4o_deployment = os.getenv("AZURE_OPENAI_GPT_DEPLOYMENT")
 
 log.info("GPT Vision deployment: %s", gpt4o_deployment)
+log.info("Azure OpenAI token scope: %s", token_scope)
 
 # ---------------------------------------------------------------------------
 # 1. Load and chunk domain-specific documents
@@ -196,19 +204,21 @@ def build_raft_context_docs(
 def add_chunk_to_dataset(
     chunks: list[str],
     chunk: str,
+    chunk_index: int,
     num_questions: int = 5,
     num_distract: int = DEFAULT_NUM_DISTRACTORS,
     p: float = DEFAULT_ORACLE_PROBABILITY,
-) -> None:
-    global ds, errors
-    i = chunks.index(chunk)
+) -> list[dict[str, Any]]:
+    global errors
+    i = chunk_index
+    rows: list[dict[str, Any]] = []
     log.debug("Processing chunk %d/%d", i + 1, len(chunks))
     try:
         qs = generate_instructions_gen(chunk, num_questions)
     except Exception as e:
         log.error("Failed to generate questions for chunk %d: %s", i, e, exc_info=True)
         errors.append(e)
-        return None
+        return rows
 
     for q in qs:
         datapt = {
@@ -249,24 +259,11 @@ def add_chunk_to_dataset(
         # matching RAFT's Q + D_1...D_k -> A* training examples.
         for doc in docs:
             context += "<DOCUMENT>" + str(doc) + "</DOCUMENT>\n"
-        
-        
         context += "\n### Question:\n" + q 
-        
-        
         datapt["instruction"] = context
+        rows.append(datapt)
 
-        if not ds:
-            datapt["id"] = [datapt["id"]]
-            datapt["type"] = [datapt["type"]]
-            datapt["question"] = [datapt["question"]]
-            datapt["context"] = [datapt["context"]]
-            datapt["oracle_context"] = [datapt["oracle_context"]]
-            datapt["cot_answer"] = [datapt["cot_answer"]]
-            datapt["instruction"] = [datapt["instruction"]]
-            ds = Dataset.from_dict(datapt)
-        else:
-            ds = ds.add_item(datapt)
+    return rows
 
 
 def generate_dataset(
@@ -279,25 +276,37 @@ def generate_dataset(
     errors = []
     ds = Dataset.from_dict({})
     log.info(
-        "Starting dataset generation for %d chunks (num_questions=%d, num_distract=%d, p=%.2f)",
+        "Starting sequential dataset generation for %d chunks "
+        "(num_questions=%d, num_distract=%d, p=%.2f)",
         len(chunks),
         num_questions,
         num_distract,
         p,
     )
+    rows: list[dict[str, Any]] = []
+    for chunk_index, chunk in enumerate(tqdm(chunks, desc="Processing chunks")):
+        try:
+            rows.extend(
+                add_chunk_to_dataset(
+                    chunks,
+                    chunk,
+                    chunk_index,
+                    num_questions,
+                    num_distract,
+                    p,
+                )
+            )
+        except Exception as e:
+            errors.append(e)
+            log.error(
+                "Unhandled exception processing chunk %d: %s",
+                chunk_index,
+                e,
+                exc_info=True,
+            )
+            break
 
-    def process_chunk(chunk):
-        add_chunk_to_dataset(chunks, chunk, num_questions, num_distract, p)
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-        futures = [executor.submit(process_chunk, chunk) for chunk in chunks]
-        with tqdm(total=len(chunks), desc="Processing chunks") as pbar:
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    log.error("Unhandled exception in worker thread: %s", e, exc_info=True)
-                pbar.update(1)
+    ds = Dataset.from_list(rows) if rows else Dataset.from_dict({})
 
     log.info("Dataset generation complete. Errors: %d/%d. Examples: %d",
              len(errors), len(chunks), len(ds) if ds else 0)

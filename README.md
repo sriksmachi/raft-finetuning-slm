@@ -31,9 +31,9 @@ Azure ML registered candidate model
 
 ## Notebooks
 
-Run in order from the repository root or from `notebooks/`:
+Run in order from the repository root:
 
-1. [Data Preparation](notebooks/01_data_preparation.ipynb) validates local RAFT JSONL splits, creates a lineage manifest, and publishes an immutable Azure ML data asset. Synthetic generation is optional and billable.
+1. [Data Preparation](notebooks/01_prepare_data.py) extracts PDF chunks, generates and validates local RAFT JSONL splits, and publishes an immutable Azure ML data asset. Synthetic generation is optional and billable.
 2. [Azure ML Fine-Tuning](notebooks/02_azureml_fine_tuning.ipynb) registers a pinned CUDA environment, submits a managed-identity QLoRA job, tracks it with MLflow, stores the merged model in Azure Storage, and registers a candidate model.
 3. [Inference, Evaluation, and Monitoring](notebooks/03_inference_evaluation_monitoring.ipynb) deploys the registered version with zero traffic, runs smoke and held-out tests, applies a promotion gate, logs evaluation evidence, demonstrates target-specific SHAP, and defines scheduled PSI drift detection.
 
@@ -44,7 +44,7 @@ Prior exploratory and Kaggle notebooks are retained under `notebooks/legacy/` fo
 ```text
 .
 ├── notebooks/
-│   ├── 01_data_preparation.ipynb
+│   ├── 01_prepare_data.py
 │   ├── 02_azureml_fine_tuning.ipynb
 │   ├── 03_inference_evaluation_monitoring.ipynb
 │   └── legacy/
@@ -101,19 +101,19 @@ AZURE_OPENAI_GPT_DEPLOYMENT=gpt vision
 
 Do not store credentials or tokens in `.env`, notebooks, job parameters, or MLflow. The training job can retrieve a Hugging Face token from Key Vault using managed identity.
 
-## Local Data Generation
+## Data Preparation
 
-The first notebook calls the reusable generator when its generation switch is enabled. The equivalent command is:
+Run the complete preparation pipeline from the repository root:
 
 ```powershell
-python -m lib.raft_datagen --skip-extract --num-questions 5 --oracle-probability 0.8
+python notebooks/01_prepare_data.py
 ```
 
-To extract page text from PDFs first:
+Reuse existing chunks or keep the run local without publishing to Azure ML:
 
 ```powershell
-python -m lib.pdf_to_chunks
-python -m lib.raft_datagen --num-questions 5
+python notebooks/01_prepare_data.py --skip-extract
+python notebooks/01_prepare_data.py --skip-publish
 ```
 
 All questions generated from one oracle source chunk remain in the same split. This grouped split is mandatory: row-wise random splitting leaks source evidence across train, validation, and test sets and inflates evaluation.

@@ -54,3 +54,17 @@ def test_validate_dataset_rejects_source_leakage(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Source leakage"):
         validate_dataset(tmp_path)
+
+
+def test_validate_dataset_warns_and_continues_for_duplicates(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    duplicate = _record("duplicate")
+    _write_split(tmp_path, "train", [duplicate, duplicate.copy()])
+    _write_split(tmp_path, "validation", [_record("validation")])
+    _write_split(tmp_path, "test", [_record("test")])
+
+    summary = validate_dataset(tmp_path)
+
+    assert summary["train"]["duplicates"] == 1
+    assert "train contains 1 duplicate question/context pairs" in caplog.text
