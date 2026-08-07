@@ -46,16 +46,65 @@ def submit_finetuning_job(
     experiment_name: str,
     base_model: str,
     display_name: str,
+    base_model_source: str = "foundry",
+    base_model_registry: str = "azureml-meta",
+    base_model_label: str = "latest",
+    base_model_version: str | None = None,
     key_vault_name: str | None = None,
     hf_token_secret_name: str | None = None,
     managed_identity_client_id: str | None = None,
+    credential=None,
 ):
-    from azure.ai.ml import Input, Output, command
+    from azure.ai.ml import Input, MLClient, Output, command
     from azure.ai.ml.constants import AssetTypes, InputOutputModes
     from azure.ai.ml.entities import ManagedIdentityConfiguration
+    from azure.identity import DefaultAzureCredential
+
+    # Resolve base model. "foundry" mounts the registry asset at ${{inputs.base_model}};
+    # "huggingface" passes the repo id through as a literal CLI argument.
+    if base_model_source == "foundry":
+        if credential is None:
+            credential = DefaultAzureCredential(exclude_interactive_browser_credential=True)
+        
+        print(f"[foundry] connecting to registry {base_model_registry!r}...", flush=True)
+        
+        registry_client = MLClient(
+            credential=credential, registry_name=base_model_registry
+        )
+        
+        if base_model_version:
+            print(
+                f"[foundry] fetching {base_model}:{base_model_version}...", flush=True
+            )
+            registry_model = registry_client.models.get(
+                name=base_model, version=base_model_version
+            )
+        else:
+            print(
+                f"[foundry] fetching {base_model} label={base_model_label!r}...",
+                flush=True,
+            )
+            registry_model = registry_client.models.get(
+                name=base_model, label=base_model_label
+            )
+        print(f"[foundry] resolved {registry_model.id}", flush=True)
+        base_model_argument = Input(
+            type=AssetTypes.CUSTOM_MODEL,
+            path=registry_model.id,
+            mode=InputOutputModes.DOWNLOAD,
+        )
+    
+    elif base_model_source == "huggingface":
+        base_model_argument = base_model
+    
+    else:
+        raise ValueError(
+            f"Unsupported base_model_source={base_model_source!r}; use 'foundry' or 'huggingface'"
+        )
 
     secret_arguments = ""
-    if key_vault_name and hf_token_secret_name:
+    
+    if base_model_source == "huggingface" and key_vault_name and hf_token_secret_name:
         secret_arguments = (
             " --key-vault-name ${{inputs.key_vault_name}}"
             " --hf-token-secret-name ${{inputs.hf_token_secret_name}}"
@@ -65,7 +114,8 @@ def submit_finetuning_job(
                 " --managed-identity-client-id "
                 "${{inputs.managed_identity_client_id}}"
             )
-    elif key_vault_name or hf_token_secret_name:
+    
+    elif base_model_source == "huggingface" and (key_vault_name or hf_token_secret_name):
         raise ValueError("Provide both Key Vault name and Hugging Face secret name")
 
     inputs = {
@@ -74,8 +124,9 @@ def submit_finetuning_job(
             path=data_asset,
             mode=InputOutputModes.DOWNLOAD,
         ),
-        "base_model": base_model,
+        "base_model": base_model_argument,
     }
+    
     if secret_arguments:
         inputs.update(
             {
@@ -106,6 +157,7 @@ def submit_finetuning_job(
         identity=ManagedIdentityConfiguration(client_id=managed_identity_client_id),
         tags={"framework": "RAFT", "stage": "fine-tuning", "model_family": "llama-3.2"},
     )
+    
     return ml_client.jobs.create_or_update(job)
 
 

@@ -213,3 +213,21 @@ __marimo__/
 videos/
 *.zip       
 data/
+# Model artifacts and downloaded checkpoints (mirror .amlignore)
+output/
+output/downloaded_models/
+downloaded_models/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+*.onnx
+tokenizer.model
+
+# Local HF and torch caches
+.cache/
+.huggingface/
+huggingface/
+hf_cache/

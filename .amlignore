@@ -5,9 +5,29 @@ __pycache__/
 data/
 notebooks/
 output/
+output/downloaded_models/
 tests/
 azureml-artifacts/
 presentation/
 *.ipynb
 .env
 .env.*
+
+# Model artifacts (never snapshot into the job code payload)
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+*.onnx
+tokenizer.model
+downloaded_models/
+
+# Local HF and torch caches
+.cache/
+.huggingface/
+huggingface/
+hf_cache/
+data/
+output/

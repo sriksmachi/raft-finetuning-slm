@@ -6,3 +6,6 @@ mlflow>=2.19,<3
 peft>=0.15,<1
 pytest>=8,<9
 shap>=0.47,<1
+azureml-fsspec>=1.0,<2
+setuptools
+azure-ai-evaluation
