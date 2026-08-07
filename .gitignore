@@ -231,3 +231,4 @@ tokenizer.model
 .huggingface/
 huggingface/
 hf_cache/
+*.bkp

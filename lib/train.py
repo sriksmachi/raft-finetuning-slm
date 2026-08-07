@@ -25,6 +25,38 @@ from transformers import (
 from lib.prompts import SYSTEM_PROMPT, user_prompt
 
 
+def resolve_base_model(base_model: str) -> str:
+    """Return a loadable model reference.
+
+    Foundry catalog assets are mounted/downloaded as a folder whose Transformers
+    checkpoint (config.json + tokenizer + weights) is nested under an MLflow model
+    layout, so ``from_pretrained`` on the mount root fails. When the argument is a
+    local directory, locate the single Transformers checkpoint inside it; otherwise
+    pass the value through unchanged (e.g. a Hugging Face repo id).
+    """
+    path = Path(base_model)
+    if not path.is_dir():
+        return base_model
+
+    candidates = [
+        config.parent
+        for config in path.rglob("config.json")
+        if (config.parent / "tokenizer_config.json").exists()
+        and (
+            any(config.parent.glob("*.safetensors"))
+            or any(config.parent.glob("pytorch_model*.bin"))
+        )
+    ]
+    if len(candidates) != 1:
+        raise RuntimeError(
+            f"Expected exactly one Transformers checkpoint under {path}, "
+            f"found {len(candidates)}: {candidates}"
+        )
+    resolved = candidates[0]
+    print(f"Resolved base model checkpoint: {resolved}", flush=True)
+    return str(resolved)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", required=True)
@@ -81,7 +113,8 @@ def main(args: argparse.Namespace) -> None:
         "validation": str(data_path / "validation.jsonl"),
     }
     dataset = load_dataset("json", data_files=files)
-    tokenizer = AutoTokenizer.from_pretrained(args.base_model, use_fast=True)
+    base_model_path = resolve_base_model(args.base_model)
+    tokenizer = AutoTokenizer.from_pretrained(base_model_path, use_fast=True)
     tokenizer.pad_token = tokenizer.pad_token or tokenizer.eos_token
     tokenizer.padding_side = "right"
 
@@ -93,7 +126,7 @@ def main(args: argparse.Namespace) -> None:
     )
 
     model = AutoModelForCausalLM.from_pretrained(
-        args.base_model,
+        base_model_path,
         quantization_config=quantization,
         device_map="auto",
         torch_dtype="auto",
