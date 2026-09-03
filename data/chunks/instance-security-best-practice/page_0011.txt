@@ -1,7 +1,9 @@
-```markdown
+White Paper
+
 # Physical security and environmental controls
 
-### ServiceNow responsibility
+## ServiceNow responsibility
+
 ServiceNow performs colocation facility vendor reviews annually and periodically performs onsite assessments of physical and environmental controls.
 
 ServiceNow colocation facility operations, security, and procurement personnel review the colocation facility provider SOC 2 Type 2 reports or other available assessments (e.g., ISO 27001) on an annual basis.
@@ -11,20 +13,21 @@ Additionally, through periodic visits to the facility, ServiceNow colocation fac
 - Routine meetings are held with vendor account management personnel to help ensure services are provided according to expectations.
 - Cloud operations personnel review access activity within the colocation facility suites on a periodic basis to ensure access is appropriate.
 
-### Best practices
-**Review and understand physical security and environmental controls at ServiceNow**
+## Best practices
+
+### Review and understand physical security and environmental controls at ServiceNow
 
 Establish a process involving relevant stakeholders to review the physical security and environmental controls information.
 
-### Additional information
-- [Securing the ServiceNow AI Platform white paper](#)
+## Additional information
 
-The links below require access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](#).
+- Securing the ServiceNow AI Platform white paper  
 
-- [Colocation facility (data center) certifications](#)
-- [Colocation facility (data center) access control management SOP](#)
+The links below require access to the ServiceNow CORE Compliance Portal. Find out how to access CORE here.
 
----
+- Colocation facility (data center) certifications  
+- Colocation facility (data center) access control management SOP  
 
-November 2025 | Release: Zurich
-```
+November 2025 | Release: Zurich  
+
+11

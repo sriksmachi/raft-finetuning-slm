@@ -1,23 +1,28 @@
-```markdown
-# GOVERN
-
-## Security contacts
-
-**Customer responsibility**  
-As outlined in the DSA, customers are responsible for identifying and maintaining appropriate security contacts by identifying them in [ServiceNow Support Security Contacts](https://www.servicenow.com).
-
-**Best practices**  
-
-### Create a process to update security contacts regularly  
-Ensure the security contact record within ServiceNow Support is always kept up to date, with details of at least two appropriate information security personnel. Set a reminder to review the security contact details at least quarterly to ensure they are current and accurate.  
-
-- Security contacts should be authorized to act on the information they receive, because it may be critically important to the organization.  
-- Use a distribution list in the security contact field when possible.  
-
-**Additional information**  
-- Update your [ServiceNow Support Security Contacts](https://www.servicenow.com) (requires a ServiceNow Support account)
+White Paper
 
 ---
 
+## GOVERN
+
+# Security contacts
+
+### Customer responsibility
+
+As outlined in the DSA, customers are responsible for identifying and maintaining appropriate security contacts by identifying them in [ServiceNow Support Security Contacts](https://www.servicenow.com/).
+
+### Best practices
+
+#### Create a process to update security contacts regularly
+
+Ensure the security contact record within ServiceNow Support is always kept up to date, with details of at least two appropriate information security personnel. Set a reminder to review the security contact details at least quarterly to ensure they are current and accurate.
+
+- Security contacts should be authorized to act on the information they receive, because it may be critically important to the organization.
+- Use a distribution list in the security contact field when possible.
+
+### Additional information
+
+- Update your [ServiceNow Support Security Contacts](https://www.servicenow.com/) (requires a ServiceNow Support account)
+
 November 2025 | Release: Zurich
-```
+
+7

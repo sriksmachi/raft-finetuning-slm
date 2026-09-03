@@ -1,38 +1,45 @@
-```markdown
-# Best practices continued
-
-## Integrate MFA with existing IdPs
-Enable MFA with your existing IdP to strengthen account security. Additionally, customer admins can require high-privileged users to authenticate with FIDO2 authenticators that use stronger methods, passwordless devices, or biometrics, ensuring more protection for sensitive actions.
-
-Customers can also allow low-privileged users to authenticate with an email one-time password (OTP) or a short message service (SMS) OTP. These methods are easy to use and require minimal setup.
-
-## Review the MFA dashboard
-Use the MFA Dashboard to gain MFA insights such as user enrollment, privileged admins who haven’t opted in to MFA, and compliance. To enhance instance security, the MFA dashboard will help customer admins confirm that all users have enabled MFA.
-
-## Use the Machine Identity Console
-Use the [Machine Identity Console](#) to gain comprehensive visibility into the security posture of your inbound integrations, such as those used for service accounts, across the ServiceNow AI Platform.
-
-## Review guidance around password spray attacks
-Review the guidance in the [Password Spray Attack Mitigating Strategies (KB0726312)](#) (link requires a ServiceNow Support account) and work your security team to apply any relevant recommendations.
-
-As of the Yokohama release, MFA is enabled by default for local logins, using built-in authentication. It is important to understand default MFA for local logins, high-privilege accounts, and sensitive roles. Teams should ensure that this default MFA setting is communicated to all relevant stakeholders. If a ServiceNow instance is not yet upgraded, enabling MFA for all admin users is recommended.
-
-- Ensure all local account users are enrolled in MFA within the required timeframe ([30 days after first login](#)).
-- Monitor local login access to verify MFA enrollment compliance.
-- Enforce MFA for admin accounts and roles with elevated access rights.
-- Define groups or roles that must always authenticate using MFA, regardless of login method.
-
-## Implement adaptive authentication for granular access control
-Collaborate with relevant stakeholders, including security teams, to assess the necessity of implementing Adaptive Authentication policies that limit access exclusively to verified external addresses, such as those originating from the customer’s gateway or web proxy.
-
-- Employ Adaptive Authentication to enforce access policies using signals like IP range, user role, group membership, and device posture.
-- Apply these controls consistently to both UI logins and Web Services/API access.
-- Enable step-up authentication or actions based on risk and user context.
-- Configure IP allow lists to restrict traffic to trusted sources such as customer gateways or proxies.
-- Account for all user access patterns, including remote and mobile.
-- Assess whether to use Step-Up MFA for high-risk access and Step-Down MFA when trust exists.
+White Paper  
 
 ---
 
-November 2025 | Release: Zurich
-```
+### Best practices continued
+
+#### Integrate MFA with existing IdPs  
+
+Enable MFA with your existing IdP to strengthen account security. Additionally, customer admins can require high-privileged users to authenticate with FIDO2 authenticators that use stronger methods, passwordless devices, or biometrics, ensuring more protection for sensitive actions.  
+
+Customers can also allow low-privileged users to authenticate with an email one-time password (OTP) or a short message service (SMS) OTP. These methods are easy to use and require minimal setup.  
+
+#### Review the MFA dashboard  
+
+Use the MFA Dashboard to gain MFA insights such as user enrollment, privileged admins who haven’t opted in to MFA, and compliance. To enhance instance security, the MFA dashboard will help customer admins confirm that all users have enabled MFA.  
+
+#### Use the Machine Identity Console  
+
+Use the Machine Identity Console to gain comprehensive visibility into the security posture of your inbound integrations, such as those used for service accounts, across the ServiceNow AI Platform.  
+
+#### Review guidance around password spray attacks  
+
+Review the guidance in the Password Spray Attack Mitigating Strategies (KB0726312) (link requires a ServiceNow Support account) and work your security team to apply any relevant recommendations.  
+
+As of the Yokohama release, MFA is enabled by default for local logins, using built-in authentication. It is important to understand default MFA for local logins, high-privilege accounts, and sensitive roles. Teams should ensure that this default MFA setting is communicated to all relevant stakeholders. If a ServiceNow instance is not yet upgraded, enabling MFA for all admin users is recommended.  
+
+- Ensure all local account users are enrolled in MFA within the required timeframe (30 days after first login).  
+- Monitor local login access to verify MFA enrollment compliance.  
+- Enforce MFA for admin accounts and roles with elevated access rights.  
+- Define groups or roles that must always authenticate using MFA, regardless of login method.  
+
+#### Implement adaptive authentication for granular access control  
+
+Collaborate with relevant stakeholders, including security teams, to assess the necessity of implementing Adaptive Authentication policies that limit access exclusively to verified external addresses, such as those originating from the customer’s gateway or web proxy.  
+
+- Employ Adaptive Authentication to enforce access policies using signals like IP range, user role, group membership, and device posture.  
+- Apply these controls consistently to both UI logins and Web Services/API access.  
+- Enable step-up authentication or actions based on risk and user context.  
+- Configure IP allow lists to restrict traffic to trusted sources such as customer gateways or proxies.  
+- Account for all user access patterns, including remote and mobile.  
+- Assess whether to use Step-Up MFA for high-risk access and Step-Down MFA when trust exists.  
+
+November 2025 | Release: Zurich  
+
+18

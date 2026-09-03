@@ -1,7 +1,11 @@
-```markdown
+PROTECT
+
+White Paper
+
 # Email security
 
 ## Customer responsibility
+
 Customers are responsible for configuring email security features within the ServiceNow AI Platform to align with their organization’s security posture and business requirements. The platform allows instances to generate and receive emails for common workflows such as task assignments, change management approvals, and status notifications. Users can also update or respond to requests by replying to these emails. While ServiceNow provides multiple out-of-the-box features to support email security, it is the customer’s responsibility to enable and manage these features appropriately to protect their instance and data.
 
 ---
@@ -9,28 +13,31 @@ Customers are responsible for configuring email security features within the Ser
 ## Best practices
 
 ### Enable email filters and malware protection
+
 Collaborate with stakeholders to determine if the organization needs to use the ServiceNow AI Platform email filter features to manage inbound messages and restrict accepted sender domains.
 
-All inbound email to the ServiceNow AI Platform is analyzed for malware and SPAM scoring. Malware scanning is performed using **ServiceNow Antivirus Protection**. X-headers are added to messages to reflect the results of this analysis, and customers can interpret and act on these headers using the **Email Filter plugin**. If a malicious email or attachment is detected, it is quarantined in the instance for inspection.
+All inbound email to the ServiceNow AI Platform is analyzed for malware and SPAM scoring. Malware scanning is performed using ServiceNow Antivirus Protection. X-headers are added to messages to reflect the results of this analysis, and customers can interpret and act on these headers using the Email Filter plugin. If a malicious email or attachment is detected, it is quarantined in the instance for inspection.
 
 ### Leverage the existing organization’s email infrastructure
-If the organization already has a mature email security environment, consider using that infrastructure through the **Advanced Email Setup** features.
+
+If the organization already has a mature email security environment, consider using that infrastructure through the Advanced Email Setup features.
 
 Customers can integrate their own email infrastructure and security gateways to control how mail to and from the instance is processed. A ServiceNow instance supports integration via SMTP, POP3, and IMAP, and can also read email using Microsoft Graph to connect with Microsoft Exchange Online.
 
 ### Monitor email and malware metrics
+
 Collaborate with stakeholders to establish effective monitoring of email and anti-malware activity. Configure alerts to proactively identify abnormal email activity or potential malware threats and have documented mitigation measures. There are metrics available in the ServiceNow Security Center (SSC) to review.
 
 ### Encrypt email with TLS and S/MIME
+
 ServiceNow mail infrastructure is designed to use opportunistic TLS to encrypt email in transit. Ensure the organization’s sending and receiving email infrastructure supports this setting.
 
 ServiceNow also supports the Secure/Multipurpose Internet Mail Extensions (S/MIME) standard. S/MIME is an end-to-end encryption protocol for sending digitally signed and encrypted emails, ensuring data confidentiality, authenticity, and integrity. Collaborate with stakeholders to determine if this feature should be configured.
 
 ### Enable Sensitive Data Redaction for emails
+
 ServiceNow provides an out-of-the-box plugin called Sensitive Data Redaction for Inbound Emails, which customer admins can install. This plugin allows customers to redact sensitive data, such as Social Security numbers, financial information, email addresses, phone numbers. Collaborate with stakeholders to determine if the organization should install and configure the Sensitive Data Redaction plugin to automatically mask sensitive information in inbound emails.
 
----
+November 2025 | Release: Zurich
 
-November 2025 | Release: Zurich  
 34
-```

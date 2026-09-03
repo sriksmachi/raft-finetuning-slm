@@ -1,7 +1,13 @@
-```markdown
-# Best practices continued
+PROTECT
 
-## Know the difference between software updates and upgrades
+White Paper  
+
+---
+
+### Best practices continued
+
+#### Know the difference between software updates and upgrades
+
 Understanding the difference between a software update and an upgrade is essential for maintaining both security and support in your ServiceNow environment.
 
 - **Software updates:** Patches and platform fixes delivered throughout the year via the ServiceNow Patching Program. These address known vulnerabilities and improve performance without changing the platform version.
@@ -9,30 +15,33 @@ Understanding the difference between a software update and an upgrade is essenti
 
 Both are critical but serve different purposes in keeping your instance secure, stable, and supported.
 
-## Adopt a proactive patch management process
+#### Adopt a proactive patch management process
+
 Establish and follow a routine schedule to promptly install security patches and platform updates in both production and sub-production environments. Treat production and sub-production systems with equal diligence, ensuring that all environments are updated.
 
-## Ensure instances remain on a supported family release
+#### Ensure instances remain on a supported family release
+
 ServiceNow releases two major version updates per year and only supports the current version (N) and one prior release (N-1).
 
-Instances operating on older family releases are categorized as “End-of-Life” (EOL) and do not receive new updates or patches. Organizations should establish and maintain a formal process to proactively track their ServiceNow instance’s family release version, ensuring timely upgrades before the platform reaches EOL status.
+Instances operating on older family release are categorized as “End-of-Life” (EOL) and do not receive new updates or patches. Organizations should establish and maintain a formal process to proactively track their ServiceNow instance’s family release version, ensuring timely upgrades before the platform reaches EOL status.
 
 ---
 
-# Additional information
+### Additional information
 
-- [Commercial cloud vulnerability management SOP](Requires access to the ServiceNow CORE Compliance Portal. Find out how to access CORE here.)
+- [Commercial cloud vulnerability management SOP](https://www.servicenow.com)  
+  (Requires access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here.](https://www.servicenow.com))
 
 The links below require a ServiceNow Support account:
 
-- [Shared responsibilities: Vulnerability assessments](Shared responsibilities: Vulnerability assessments)
-- [Security advisories page](Security advisories page)
-- [ServiceNow Patching Program FAQs](ServiceNow Patching Program FAQs)
-- [End-of-life (EOL) policy](End-of-life (EOL) policy)
-- [Understanding supported servicenow releases and the patch lifecycle](Understanding supported servicenow releases and the patch lifecycle)
+- [Shared responsibilities: Vulnerability assessments](https://www.servicenow.com)
+- [Security advisories page](https://www.servicenow.com)
+- [ServiceNow Patching Program FAQs](https://www.servicenow.com)
+- [End-of-life (EOL) policy](https://www.servicenow.com)
+- [Understanding supported servicenow releases and the patch lifecycle](https://www.servicenow.com)
 
 ---
 
 November 2025 | Release: Zurich  
+
 16
-```

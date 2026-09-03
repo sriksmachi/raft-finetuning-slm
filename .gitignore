@@ -14,7 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Keep the repository's reusable Python package; virtual environments are ignored below.
+!lib/
 lib64/
 parts/
 sdist/
@@ -194,6 +195,10 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# Local Azure ML notebook artifacts
+azureml-artifacts/
+monitoring/*.json
+
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
@@ -207,3 +212,24 @@ marimo/_lsp/
 __marimo__/
 videos/
 *.zip       
+data/
+# Model artifacts and downloaded checkpoints (mirror .amlignore)
+output/
+output/downloaded_models/
+downloaded_models/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+*.onnx
+tokenizer.model
+
+# Local HF and torch caches
+.cache/
+.huggingface/
+huggingface/
+hf_cache/
+*.bkp
+prod/

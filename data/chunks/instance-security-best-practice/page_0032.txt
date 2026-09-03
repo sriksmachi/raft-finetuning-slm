@@ -1,36 +1,40 @@
-```markdown
-# MID Server security
+## MID Server security
 
-## Customer responsibility
+### Customer responsibility
+
 Customers are responsible for ensuring the security of the MID Server by maintaining strict physical controls, deploying and hardening the server and operating system in accordance with their internal IT policies, and restricting network access to only essential services and infrastructure. They are also responsible for operating the MID Server and managing account credentials. Additionally, customers must monitor firewall and proxy configurations to allow only the necessary connections.
 
 ---
 
-## Best practices
+### Best practices
 
-### Secure physical access to the MID Server
+#### Secure physical access to the MID Server
+
 Place the MID Server in a physically secure location, such as a locked data center or server room, with access restricted to authorized personnel. Follow your organization’s access audit requirements to detect and prevent unauthorized entry.
 
-### Harden the MID Server and operating system
-Deploy and secure the MID Server’s operating system and runtime environment according to your organization’s IT security policies. Use only [supported operating systems](#) that receive security updates. The MID Server Java application runs on supported Windows or Linux servers with a Java Runtime Environment.
+#### Harden the MID Server and operating system
 
-### Harden server and operating system for MID Server security
+Deploy and secure the MID Server’s operating system and runtime environment according to your organization’s IT security policies. Use only supported operating systems that receive security updates. The MID Server Java application runs on supported Windows or Linux servers with a Java Runtime Environment.
+
+#### Harden server and operating system for MID Server security
+
 Ensure that the server operating system and runtime environment are deployed, secured, and hardened in accordance with the organization’s established internal IT security policies and operational procedures. Operate only on supported operating systems that continue to receive security updates. The MID Server Java application runs on supported Windows or Linux Servers with a Java Runtime Environment.
 
-### Enforce network security for MID Server
-Limit the MID Server’s network connectivity to essential services only. Configure protocols such as SSH, WMI, PowerShell, SNMP, and WBEM as needed. When possible, use MID Server mutual authentication with the ServiceNow instance and restrict access to trusted networks using [Adaptive authentication](#) or [Zero Trust Access (ServiceNow Vault entitlement required)](#).
+#### Enforce network security for MID Server
 
-### Define your credential and access strategy
+Limit the MID Server’s network connectivity to essential services only. Configure protocols such as SSH, WMI, PowerShell, SNMP, and WBEM as needed. When possible, use MID Server mutual authentication with the ServiceNow instance and restrict access to trusted networks using Adaptive authentication or Zero Trust Access (ServiceNow Vault entitlement required).
+
+#### Define your credential and access strategy
+
 Customer administrators should carefully review available service account options. This may require collaboration with stakeholders to choose identities that meet the use case requirements and align with the applicable corporate IT security policies. Consider the following authentication and authorization capabilities:
 
-- Decide between agent-less, agent-based, or hybrid access.
-- Establish a credential management strategy (Credentials table or External Credentials Storage — i.e., CyberArk).
-- The Windows MID Server uses the login credentials of the MID Server service by default.
-- For non-admin access, consider [Microsoft Just Enough Administration (JEA)](#) for basic discovery. For agent-based access, use [ServiceNow Agent Client Collector (ACC)](#) and configure allow lists to restrict commands.
-- For Linux and UNIX machines and network devices, the MID Server uses the SSH and SNMP credentials configured on the instance.
+- Decide between agent-less, agent-based, or hybrid access.  
+- Establish a credential management strategy (Credentials table or External Credentials Storage — i.e., CyberArk).  
+- The Windows MID Server uses the login credentials of the MID Server service by default.  
+- For non-admin access, consider Microsoft Just Enough Administration (JEA) for basic discovery. For agent-based access, use ServiceNow Agent Client Collector (ACC) and configure allow lists to restrict commands..  
+- For Linux and UNIX machines and network devices, the MID Server uses the SSH and SNMP credentials configured on the instance.  
 - MID Servers can be configured to perform mutual authentication with the ServiceNow instance, employing a TLS client certificate for authentication. Customers use TLS certificates for mutual authentication.
 
 ---
 
-*November 2025 | Release: Zurich*
-```
+November 2025 | Release: Zurich                                                                                                                                32

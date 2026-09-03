@@ -1,4 +1,7 @@
-"""Merge saved RAFT prediction CSVs into one output file."""
+"""Merge saved RAFT prediction CSVs into one output file.
+
+Run with ``python -m lib.merge_predictions`` from the repository root.
+"""
 
 import argparse
 from pathlib import Path

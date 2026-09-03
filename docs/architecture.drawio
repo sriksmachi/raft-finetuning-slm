@@ -1,0 +1,118 @@
+<mxfile host="Electron">
+  <diagram name="SLM SFT Playbook - End to End" id="slm-sft-e2e">
+    <mxGraphModel dx="1172" dy="871" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1000" pageHeight="1180" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontSize=18;fontStyle=1;fontColor=#1A1A1A;" value="SLM Supervised Fine-Tuning Playbook on Azure Machine Learning — End-to-End Design" vertex="1">
+          <mxGeometry height="30" width="900" x="40" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#666666;fontStyle=2;" value="Generic SFT pipeline (RAFT worked example): versioned data → managed-identity training → sealed-test evaluation → gated deployment → drift monitoring" vertex="1">
+          <mxGeometry height="20" width="900" x="40" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="src" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1A1A1A;fontSize=12;arcSize=10;" value="Local PDF / text chunks" vertex="1">
+          <mxGeometry height="50" width="260" x="360" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="n01" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1A1A1A;fontSize=12;arcSize=8;" value="01 · Data Preparation&#xa;schema + leakage checks + SHA-256 fingerprint" vertex="1">
+          <mxGeometry height="70" width="260" x="360" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="asset" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1A1A1A;fontSize=11;" value="Azure ML Data Asset&#xa;versioned · workspace datastore" vertex="1">
+          <mxGeometry height="70" width="220" x="380" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="n02" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1A1A1A;fontSize=12;arcSize=8;" value="02 · Data Exploration&#xa;oracle/distractor balance · length budgets (max_seq_length, max_new_tokens)" vertex="1">
+          <mxGeometry height="70" width="260" x="360" y="430" as="geometry" />
+        </mxCell>
+        <mxCell id="n03" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1A1A1A;fontSize=12;arcSize=8;" value="03 · Azure ML Fine-Tuning&#xa;LoRA/PEFT command job · prompt-token loss masking&#xa;MLflow lineage · merged model output" vertex="1">
+          <mxGeometry height="90" width="260" x="360" y="550" as="geometry" />
+        </mxCell>
+        <mxCell id="candidate" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1A1A1A;fontSize=12;arcSize=10;" value="Registered Candidate Model&#xa;immutable version (unpromoted)" vertex="1">
+          <mxGeometry height="60" width="260" x="360" y="690" as="geometry" />
+        </mxCell>
+        <mxCell id="n04" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1A1A1A;fontSize=12;arcSize=8;" value="04 · Offline Inference &amp; RAG Evaluation&#xa;base vs fine-tuned on sealed test&#xa;Azure OpenAI judge" vertex="1">
+          <mxGeometry height="80" width="260" x="360" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="n05" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1A1A1A;fontSize=12;arcSize=8;" value="05 · Deployment, Evaluation &amp; Monitoring&#xa;zero-traffic deployment → token-F1 + latency gate → promotion&#xa;SHAP diagnostic · PSI drift schedule" vertex="1">
+          <mxGeometry height="90" width="260" x="360" y="930" as="geometry" />
+        </mxCell>
+        <mxCell id="endpoint" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1A1A1A;fontSize=12;arcSize=10;" value="Managed Online Endpoint&#xa;promoted deployment · scheduled drift job" vertex="1">
+          <mxGeometry height="60" width="260" x="360" y="1070" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_aoai_gen" parent="1" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=6 4;fillColor=#F5F5F5;strokeColor=#999999;fontColor=#333333;fontSize=11;arcSize=12;" value="Azure OpenAI&#xa;synthetic data gen (optional, billable)" vertex="1">
+          <mxGeometry height="50" width="220" x="720" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_gpu" parent="1" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=6 4;fillColor=#F5F5F5;strokeColor=#999999;fontColor=#333333;fontSize=11;arcSize=12;" value="GPU Compute + Managed Identity" vertex="1">
+          <mxGeometry height="42" width="220" x="696" y="543" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_kv" parent="1" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=6 4;fillColor=#F5F5F5;strokeColor=#999999;fontColor=#333333;fontSize=11;arcSize=12;" value="Azure Key Vault · Hugging Face token" vertex="1">
+          <mxGeometry height="42" width="220" x="720" y="598" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_foundry" parent="1" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=6 4;fillColor=#F5F5F5;strokeColor=#999999;fontColor=#333333;fontSize=11;arcSize=12;" value="Azure AI Foundry / Hugging Face&#xa;base SLM weights" vertex="1">
+          <mxGeometry height="42" width="220" x="669" y="486" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_judge" parent="1" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=6 4;fillColor=#F5F5F5;strokeColor=#999999;fontColor=#333333;fontSize=11;arcSize=12;" value="Azure OpenAI · LLM judge&#xa;relevancy · groundedness · coherence" vertex="1">
+          <mxGeometry height="50" width="220" x="720" y="815" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_monitor" parent="1" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=6 4;fillColor=#F5F5F5;strokeColor=#999999;fontColor=#333333;fontSize=11;arcSize=12;" value="MLflow tracking · PSI drift monitor" vertex="1">
+          <mxGeometry height="50" width="220" x="720" y="950" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_title" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#1A1A1A;" value="Legend" vertex="1">
+          <mxGeometry height="20" width="180" x="40" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_stage" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1A1A1A;fontSize=11;arcSize=12;" value="Notebook stage" vertex="1">
+          <mxGeometry height="34" width="180" x="40" y="588" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_asset" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#1A1A1A;fontSize=11;arcSize=12;" value="Versioned Azure ML asset" vertex="1">
+          <mxGeometry height="34" width="180" x="40" y="630" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_svc" parent="1" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=6 4;fillColor=#F5F5F5;strokeColor=#999999;fontColor=#333333;fontSize=11;arcSize=12;" value="Supporting Azure service" vertex="1">
+          <mxGeometry height="34" width="180" x="40" y="672" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_note" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;fontColor=#666666;fontStyle=2;" value="Dashed edge = optional / supporting flow" vertex="1">
+          <mxGeometry height="20" width="200" x="40" y="712" as="geometry" />
+        </mxCell>
+        <mxCell id="e_src_01" edge="1" parent="1" source="src" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#666666;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="n01">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_01_asset" edge="1" parent="1" source="n01" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#666666;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="asset">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_asset_02" edge="1" parent="1" source="asset" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#666666;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="n02">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_02_03" edge="1" parent="1" source="n02" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#666666;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="n03">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_03_cand" edge="1" parent="1" source="n03" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#666666;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="candidate">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_cand_04" edge="1" parent="1" source="candidate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#666666;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="n04">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_04_05" edge="1" parent="1" source="n04" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#666666;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="n05">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_05_ep" edge="1" parent="1" source="n05" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeColor=#666666;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="endpoint">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_01_gen" edge="1" parent="1" source="n01" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=open;endFill=0;strokeColor=#B3B3B3;strokeWidth=1;dashed=1;dashPattern=4 4;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="svc_aoai_gen">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_03_foundry" edge="1" parent="1" source="n03" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=open;endFill=0;strokeColor=#B3B3B3;strokeWidth=1;dashed=1;dashPattern=4 4;exitX=1;exitY=0.15;entryX=0;entryY=0.5;" target="svc_foundry">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_03_gpu" edge="1" parent="1" source="n03" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=open;endFill=0;strokeColor=#B3B3B3;strokeWidth=1;dashed=1;dashPattern=4 4;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="svc_gpu">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_03_kv" edge="1" parent="1" source="n03" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=open;endFill=0;strokeColor=#B3B3B3;strokeWidth=1;dashed=1;dashPattern=4 4;exitX=1;exitY=0.85;entryX=0;entryY=0.5;" target="svc_kv">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_04_judge" edge="1" parent="1" source="n04" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=open;endFill=0;strokeColor=#B3B3B3;strokeWidth=1;dashed=1;dashPattern=4 4;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="svc_judge">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_05_monitor" edge="1" parent="1" source="n05" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=open;endFill=0;strokeColor=#B3B3B3;strokeWidth=1;dashed=1;dashPattern=4 4;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="svc_monitor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

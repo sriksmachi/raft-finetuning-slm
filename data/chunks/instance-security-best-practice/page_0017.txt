@@ -1,9 +1,15 @@
-```markdown
-# Identity and access management
-## Authentication
+PROTECT
+
+White Paper
+
+Identity and access management  
+Authentication
+
+---
 
 ### Customer responsibility
-In the context of the Security [Shared Responsibility Model](#), customers have the responsibility of configuring their instance using supported authentication methods. This configuration process may include setting up multi-provider single sign-on (SSO) with security assertion markup language (SAML) or OpenID connect (OIDC), enabling smartcard authentication such as personal identity verification (PIV) or common access card (CAC) for environments requiring high security, utilizing OAuth, and enforcing multi-factor authentication (MFA).
+
+In the context of the Security Shared Responsibility Model, customers have the responsibility of configuring their instance using supported authentication methods. This configuration process may include setting up multi-provider single sign-on (SSO) with security assertion markup language (SAML) or OpenID connect (OIDC), enabling smartcard authentication such as personal identity verification (PIV) or common access card (CAC) for environments requiring high security, utilizing OAuth, and enforcing multi-factor authentication (MFA).
 
 Additionally, it involves disabling local logins to enhance security. By default, MFA is enabled for all local logins, and customers must manage exceptions and monitor to ensure this default setting is maintained. The authentication mechanism plays a crucial role by verifying the identity of users accessing a ServiceNow instance and subsequently authorizing them to access features that correspond to their role or job function.
 
@@ -12,26 +18,33 @@ Additionally, it involves disabling local logins to enhance security. By default
 ### Best practices
 
 #### Change default passwords
+
 ServiceNow instances come with certain built-in accounts such as “admin,” “ITIL,” and “employee” which are provisioned with default passwords, unique to the instance. Customer admins should change all default passwords for built-in accounts immediately upon instance creation, ensuring that each new password meets your organization’s complexity and strength requirements.
 
 #### Configure and enforce strong password policies
+
 It is important for customers to set password policies for their Identity Provider (IdP) and within their ServiceNow instance(s). This includes specifying requirements like minimum password length, complexity, expiration, uniqueness, and lockout conditions for native accounts. Also, be sure configurations meet your organizational standards.
 
 #### Enable account lockout to prevent brute force attacks
+
 As a critical security best practice, customers should enable account lockouts both on their IdP and for all local accounts within the ServiceNow instance. This measure is essential to defend against brute force authentication attacks by automatically locking accounts after a set number of failed login attempts.
 
 #### Manage IP address access control
+
 Limit which IP addresses are allowed or denied access to the ServiceNow instance. If a VPN or another method is used to route traffic through a known set of IP addresses, access to the instance should only be allowed for that range of addresses.
 
-**Note:** IP address access control does not limit access for ServiceNow support personnel. Customers can enable the [SNC access control plugin](#) to restrict instance access to specific personnel, or restrict access without their express permission. Enabling this plugin may affect the ability of ServiceNow support to help a customer if they are locked out of their instance.
+Note: IP address access control does not limit access for ServiceNow support personnel. Customers can enable the SNC access control plugin to restrict instance access to specific personnel, or restrict access without their express permission. Enabling this plugin may affect the ability of ServiceNow support to help a customer if they are locked out of their instance.
 
 #### Consider API authentication
+
 API access can use either standard user identities (interactive) or machine identities (non-interactive). Evaluate your authentication from both perspectives.
 
 #### Assess whether local login requires restrictions
+
 Collaborate with stakeholders, including IT, security, and business leaders, to evaluate whether local login methods should be restricted for interactive sessions. Consider potential risks, operational requirements, and integration needs.
 
 ---
 
 November 2025 | Release: Zurich
-```
+
+17

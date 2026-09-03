@@ -1,5 +1,5 @@
 # =============================================================================
-# RAFT & RAG Training Data Generation using GPT-4o
+# RAFT & RAG Training Data Generation using GPT Vision
 # =============================================================================
 # Generates Question-Document-Answer triplets from a PDF for RAFT fine-tuning.
 # Outputs train/validate/test JSONL files under ./data/training_data/
@@ -9,18 +9,16 @@ import logging.config
 import os
 import random
 import re
-import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
-import concurrent.futures
-import numpy as np
 from datasets import Dataset
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import AzureOpenAI
 from tqdm import tqdm
-from azure.identity import AzureCliCredential
+from azure.identity import AzureCliCredential, get_bearer_token_provider
 
 load_dotenv()
 
@@ -43,28 +41,37 @@ log = logging.getLogger(__name__)
 # Azure OpenAI client
 # ---------------------------------------------------------------------------
 
-# Fetch the token once on the main thread so parallel worker threads share a
-# single cached credential — avoids concurrent az-cli subprocess timeouts.
-_ad_token = AzureCliCredential().get_token(
-    "https://cognitiveservices.azure.com/.default"
-).token
-
-client = AzureOpenAI(
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    azure_ad_token=_ad_token,
+azure_openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+endpoint_host = urlparse(azure_openai_endpoint).hostname or ""
+token_scope = os.getenv("AZURE_OPENAI_TOKEN_SCOPE") or (
+    "https://ai.azure.com/.default"
+    if endpoint_host.endswith(".services.ai.azure.com")
+    else "https://cognitiveservices.azure.com/.default"
 )
 
-gpt4o_deployment = os.getenv("AZURE_OPENAI_GPT4O_DEPLOYMENT")
+_token_provider = get_bearer_token_provider(
+    AzureCliCredential(),
+    token_scope,
+)
 
-log.info("GPT-4o deployment: %s", gpt4o_deployment)
+client = AzureOpenAI(
+    azure_endpoint=azure_openai_endpoint,
+    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+    azure_ad_token_provider=_token_provider,
+)
+
+gpt4o_deployment = os.getenv("AZURE_OPENAI_GPT_DEPLOYMENT")
+
+log.info("GPT Vision deployment: %s", gpt4o_deployment)
+log.info("Azure OpenAI token scope: %s", token_scope)
 
 # ---------------------------------------------------------------------------
 # 1. Load and chunk domain-specific documents
 # ---------------------------------------------------------------------------
 
 def remove_special_characters(string: str) -> str:
-    return re.sub(r'[^a-zA-Z0-9\s]', '', string)
+    cleaned = re.sub(r'[^a-zA-Z0-9\s]', '', string)
+    return re.sub(r'\s+', ' ', cleaned).strip()
 
 
 def load_chunks_from_dir(
@@ -82,12 +89,16 @@ def load_chunks_from_dir(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
     )
+
     chunks: list[str] = []
+
     for text in page_texts:
         for split in splitter.split_text(text):
             if len(remove_special_characters(split)) > 100:
-                chunks.append(split)
+                chunks.append(remove_special_characters(split))
+
     log.info("%d chunk(s) after splitting and filtering", len(chunks))
+    
     return chunks
 
 
@@ -197,19 +208,21 @@ def build_raft_context_docs(
 def add_chunk_to_dataset(
     chunks: list[str],
     chunk: str,
+    chunk_index: int,
     num_questions: int = 5,
     num_distract: int = DEFAULT_NUM_DISTRACTORS,
     p: float = DEFAULT_ORACLE_PROBABILITY,
-) -> None:
-    global ds, errors
-    i = chunks.index(chunk)
+) -> list[dict[str, Any]]:
+    global errors
+    i = chunk_index
+    rows: list[dict[str, Any]] = []
     log.debug("Processing chunk %d/%d", i + 1, len(chunks))
     try:
         qs = generate_instructions_gen(chunk, num_questions)
     except Exception as e:
         log.error("Failed to generate questions for chunk %d: %s", i, e, exc_info=True)
         errors.append(e)
-        return None
+        return rows
 
     for q in qs:
         datapt = {
@@ -231,11 +244,10 @@ def add_chunk_to_dataset(
             errors.append(e)
             continue
 
-        d = {"title": [], "sentences": []}
-        d["title"].append(["placeholder_title"] * len(docs))
+        d = { "sentences": []}
         d["sentences"].append(docs)
-        datapt["context"] = d
-        datapt["oracle_context"] = chunk
+        datapt["context"] = d # this can be a list of distractor chunks and the oracle chunk, but we will use the oracle chunk for generating the answer
+        datapt["oracle_context"] = chunk # this is the oracle chunk that contains the answer to the question
         datapt["type"] = "oracle" if oracle else "distractor"
 
         try:
@@ -250,24 +262,11 @@ def add_chunk_to_dataset(
         # matching RAFT's Q + D_1...D_k -> A* training examples.
         for doc in docs:
             context += "<DOCUMENT>" + str(doc) + "</DOCUMENT>\n"
-        
-        
         context += "\n### Question:\n" + q 
-        
-        
         datapt["instruction"] = context
+        rows.append(datapt)
 
-        if not ds:
-            datapt["id"] = [datapt["id"]]
-            datapt["type"] = [datapt["type"]]
-            datapt["question"] = [datapt["question"]]
-            datapt["context"] = [datapt["context"]]
-            datapt["oracle_context"] = [datapt["oracle_context"]]
-            datapt["cot_answer"] = [datapt["cot_answer"]]
-            datapt["instruction"] = [datapt["instruction"]]
-            ds = Dataset.from_dict(datapt)
-        else:
-            ds = ds.add_item(datapt)
+    return rows
 
 
 def generate_dataset(
@@ -280,25 +279,37 @@ def generate_dataset(
     errors = []
     ds = Dataset.from_dict({})
     log.info(
-        "Starting dataset generation for %d chunks (num_questions=%d, num_distract=%d, p=%.2f)",
+        "Starting sequential dataset generation for %d chunks "
+        "(num_questions=%d, num_distract=%d, p=%.2f)",
         len(chunks),
         num_questions,
         num_distract,
         p,
     )
+    rows: list[dict[str, Any]] = []
+    for chunk_index, chunk in enumerate(tqdm(chunks, desc="Processing chunks")):
+        try:
+            rows.extend(
+                add_chunk_to_dataset(
+                    chunks,
+                    chunk,
+                    chunk_index,
+                    num_questions,
+                    num_distract,
+                    p,
+                )
+            )
+        except Exception as e:
+            errors.append(e)
+            log.error(
+                "Unhandled exception processing chunk %d: %s",
+                chunk_index,
+                e,
+                exc_info=True,
+            )
+            break
 
-    def process_chunk(chunk):
-        add_chunk_to_dataset(chunks, chunk, num_questions, num_distract, p)
-
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = [executor.submit(process_chunk, chunk) for chunk in chunks]
-        with tqdm(total=len(chunks), desc="Processing chunks") as pbar:
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    log.error("Unhandled exception in worker thread: %s", e, exc_info=True)
-                pbar.update(1)
+    ds = Dataset.from_list(rows) if rows else Dataset.from_dict({})
 
     log.info("Dataset generation complete. Errors: %d/%d. Examples: %d",
              len(errors), len(chunks), len(ds) if ds else 0)
@@ -311,10 +322,17 @@ def save_datasets(training_df, output_dir: str = "./data/training_data_raft") ->
     log.info("Splitting %d rows into train/validate/test sets", len(training_df))
     os.makedirs(output_dir, exist_ok=True)
 
-    train_df, validate_df, test_df = np.split(
-        training_df.sample(frac=1, random_state=42),
-        [int(.8 * len(training_df)), int(.9 * len(training_df))]
+    source_groups = training_df["oracle_context"].drop_duplicates().sample(
+        frac=1, random_state=42
     )
+    train_end = int(.8 * len(source_groups))
+    validation_end = int(.9 * len(source_groups))
+    train_sources = set(source_groups.iloc[:train_end])
+    validation_sources = set(source_groups.iloc[train_end:validation_end])
+    test_sources = set(source_groups.iloc[validation_end:])
+    train_df = training_df[training_df["oracle_context"].isin(train_sources)]
+    validate_df = training_df[training_df["oracle_context"].isin(validation_sources)]
+    test_df = training_df[training_df["oracle_context"].isin(test_sources)]
     log.info("Split sizes — Train: %d, Validate: %d, Test: %d",
              train_df.shape[0], validate_df.shape[0], test_df.shape[0])
 
@@ -322,78 +340,3 @@ def save_datasets(training_df, output_dir: str = "./data/training_data_raft") ->
     validate_df.to_json(f"{output_dir}/validation.jsonl", orient="records", lines=True)
     test_df.to_json(f"{output_dir}/test.jsonl", orient="records", lines=True)
     log.info("Saved train/validation/test datasets to '%s/'", output_dir)
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    try:
-        import argparse
-        parser = argparse.ArgumentParser(description="RAFT dataset generation")
-        parser.add_argument("--skip-extract", action="store_true",
-                            help="Skip PDF extraction, use existing chunks")
-        parser.add_argument("--num-questions", type=int, default=5,
-                            help="Number of questions to generate per chunk (default: 5)")
-        parser.add_argument("--num-distractors", type=int, default=DEFAULT_NUM_DISTRACTORS,
-                    help="Distractor chunks to include with oracle contexts (default: 3)")
-        parser.add_argument("--oracle-probability", type=float, default=DEFAULT_ORACLE_PROBABILITY,
-                    help="Probability p that a sample includes the oracle chunk (default: 0.8)")
-        args = parser.parse_args()
-
-        skip_extract  = args.skip_extract
-        num_questions = args.num_questions
-        num_distract  = args.num_distractors
-        oracle_probability = args.oracle_probability
-        pdf_path      = "./data/instance-security-best-practice.pdf"
-        pdf_stem      = Path(pdf_path).stem
-        chunks_dir    = f"./data/chunks/{pdf_stem}"
-        output_dir    = "./data/training_data_raft"
-
-        log.info("=" * 60)
-        log.info("RAFT data generation started")
-        log.info("=" * 60)
-        log.info("Source PDF: %s", pdf_path)
-
-        # Step 1 (optional): extract text chunks from PDF via pdf_to_chunks
-        if not skip_extract:
-            log.info("Extracting text chunks from PDF ...")
-            import pdf_to_chunks
-            pdf_to_chunks.extract_chunks(pdf_path)
-        else:
-            log.info("Skipping extraction (--skip-extract)")
-
-        # Step 2: load and sub-chunk
-        chunks = load_chunks_from_dir(chunks_dir)
-        if not chunks:
-            log.error("No chunks found in '%s'. Run without --skip-extract first.", chunks_dir)
-            sys.exit(1)
-        log.info("Loaded %d chunk(s)", len(chunks))
-
-        # Step 3: Generate Q/A/D triplets
-        log.info(
-            "Generating %d question(s) per chunk with p=%.2f oracle inclusion",
-            num_questions,
-            oracle_probability,
-        )
-        generate_dataset(
-            chunks,
-            num_questions=num_questions,
-            num_distract=num_distract,
-            p=oracle_probability,
-        )
-
-        # Step 4: Format and save
-        training_df = ds.to_pandas()
-        log.info("%d rows after dropping nulls", len(training_df))
-
-        save_datasets(training_df, output_dir)
-
-        log.info("=" * 60)
-        log.info("RAFT data generation complete")
-        log.info("=" * 60)
-        sys.exit(0)
-    except Exception:
-        log.exception("Fatal error — aborting")
-        sys.exit(1)

@@ -56,7 +56,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--response-model",
-        default=os.getenv("AZURE_OPENAI_GPT41_DEPLOYMENT", "gpt-4.1"),
+        default=os.getenv("AZURE_OPENAI_GPT_DEPLOYMENT", "gpt-4.1"),
         help="Azure OpenAI deployment name for generating responses",
     )
     parser.add_argument(

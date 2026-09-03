@@ -1,30 +1,37 @@
-```markdown
+PROTECT
+
+White Paper
+
 # Encryption
+
 ## Data in transit
 
 ### Customer responsibility
+
 The ServiceNow AI Platform provides customers with encryption in transit via HTTPS for user access and API access to the instance. The platform also supports several protocols for integration with customer or third-party systems, including HTTPS, LDAPS, FTPS, and SCP. Customers should configure data in transit encryption methods in accordance with their security policies and use cases.
 
----
-
 ### ServiceNow responsibility
+
 The ServiceNow AI Platform supports default encryption in transit for sessions inbound to the instance using a minimum of TLS 1.2. All attempted access to a ServiceNow instance over HTTP is redirected to HTTPS.
 
 ServiceNow instance email infrastructure supports opportunistic TLS for sending or receiving email.
 
----
-
 ### Best practices
 
 #### Enforce TLS 1.2 or higher for browser connections
+
 Customer admins should configure their web browsers to use only TLS 1.2, or higher when connecting to their ServiceNow instance.
 
-*Note:* Negotiated ciphers are subject to customer browser versions and may be influenced by customer Internet proxy infrastructure. Customers can specify cipher suites in their own browsers or proxies, as well as select the ciphers to be used on their instance.
+Note: Negotiated ciphers are subject to customer browser versions and may be influenced by customer Internet proxy infrastructure. Customers can specify cipher suites in their own browsers or proxies, as well as select the ciphers to be used on their instance.
 
 #### Configure other protocols for encryption in transit
+
 Admins can also configure other traffic protocols, such as LDAP, SMTP, and SFTP, to use TLS 1.2.
 
 #### Encrypt email via S/MIME
-ServiceNow implementations can support [S/MIME “end-to-end” email encryption](https://www.servicenow.com).
-```
 
+ServiceNow implementations can support S/MIME “end-to-end” email encryption.
+
+November 2025 | Release: Zurich
+
+25

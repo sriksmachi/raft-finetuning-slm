@@ -1,51 +1,64 @@
-```markdown
+PROTECT  
+
+White Paper  
+
 # Data at rest
-
-## Customer responsibility
-Data at rest encryption is not enabled by default for customers using the standard ServiceNow Commercial Cloud.
-
-To meet organizational security and compliance requirements, customers must evaluate and implement appropriate encryption solutions for their ServiceNow instance(s).
-
-ServiceNow offers a range of encryption options, including free [Field Encryption Starter](https://example.com) and premium solutions such as [Cloud Encryption (CE)](https://example.com) and [Full Disk Encryption (FDE)](https://example.com), which are available at an additional cost.
-
-Customers are also responsible for key lifecycle management through the [Key Management Framework (KMF)](https://example.com). The KMF introduces specific roles for cryptographic modules and key management operations. Customer admins should review these roles and assign them in accordance with their company’s internal security policy.
-
-### Key ownership and control
-Customers need to determine which type of encryption key they will use on the ServiceNow AI Platform: a ServiceNow-managed key (SMK) or bring your own key (BYOK).
-
-### Encryption key lifecycle management
-- **Generation**: When using BYOK, keys should be generated in accordance with the company’s internal security policy and follow the [ServiceNow key preparation guidance](https://example.com).
-- **Rotation**: Customers should regularly rotate keys to minimize exposure. ServiceNow supports scheduled rotation for SMK and provides notification reminders for BYOK.
-- **Storage**: BYOK’s should be stored in a secure, protected environment that performs regular backups to ensure that the keys remain available and recoverable, if needed.
 
 ---
 
-## Best practices
+### Customer responsibility
 
-### Choose an encryption method for data at rest in an instance*
+Data at rest encryption is **not enabled by default** for customers using the standard ServiceNow Commercial Cloud.
+
+To meet organizational security and compliance requirements, customers **must evaluate and implement** appropriate encryption solutions for their ServiceNow instance(s).
+
+ServiceNow offers a range of encryption options, including free [Field Encryption Starter](https://www.servicenow.com/) and premium solutions such as [Cloud Encryption (CE)](https://www.servicenow.com/) and [Full Disk Encryption (FDE)](https://www.servicenow.com/), which are available at an additional cost.
+
+Customers are also responsible for key lifecycle management through the [Key Management Framework (KMF)](https://www.servicenow.com/). The KMF introduces specific roles for cryptographic modules and key management operations. Customer admins should review these roles and assign them in accordance with their company’s internal security policy.
+
+#### Key ownership and control
+
+Customers need to determine which type of encryption key they will use on the ServiceNow AI Platform: a **ServiceNow-managed key (SMK)** or **bring your own key (BYOK).**
+
+#### Encryption key lifecycle management
+
+- **Generation:** When using BYOK, keys should be generated in accordance with the company’s internal security policy and follow the [ServiceNow key preparation guidance](https://www.servicenow.com/).  
+- **Rotation:** Customers should regularly rotate keys to minimize exposure. ServiceNow supports scheduled rotation for SMK and provides notification reminders for BYOK.  
+- **Storage:** BYOK’s should be stored in a secure, protected environment that performs regular backups to ensure that the keys remain available and recoverable, if needed.
+
+---
+
+### Best practices
+
+#### Choose an encryption method for data at rest in an instance\*
+
 The customer’s security team should work with stakeholders to thoroughly assess the regulatory and organizational requirements for data stored in their ServiceNow instance(s) to determine if data at rest needs to be encrypted.
 
 Based on this assessment, customers should select the most appropriate encryption method offered by ServiceNow. When implementing the chosen encryption method, ensure encryption settings and key management are configured in accordance with internal policies and compliance standards to safeguard sensitive information throughout its lifecycle.
 
-### Customers seeking included functionality
-**Field Encryption Starter**:  
-Data stored within a ServiceNow instance can be protected with Field Encryption Starter, which allows customers to encrypt specific fields within the instance using AES128 or AES256 encryption.  
+---
+
+#### Customers seeking included functionality
+
+**Field Encryption Starter:** Data stored within a ServiceNow instance can be protected with Field Encryption Starter, which allows customers to encrypt specific fields within the instance using AES128 or AES256 encryption.
 
 The key itself is stored within the instance and is protected via the ServiceNow AI Platform using Key Management Framework.
 
-### Customers seeking enhanced data protection can license additional encryption features
-**Platform Encryption Bundle**: Combines Field Encryption Enterprise, Cloud Encryption, and the Key Management Framework (KMF) for comprehensive encryption coverage.
-
-- **Field Encryption Enterprise**: Enables granular, field-level encryption with flexible policies, API support, and customer-managed key capabilities.
-- **Cloud Encryption (CE)**: Provides volume-level encryption, supporting customer-managed keys.
-- **Full Disk Encryption (FDE)**: Encrypts physical disks at the hardware layer and requires dedicated hosting infrastructure.
-
 ---
+
+#### Customers seeking enhanced data protection can license additional encryption features
+
+**Platform Encryption Bundle:** Combines Field Encryption Enterprise, Cloud Encryption, and the Key Management Framework (KMF) for comprehensive encryption coverage.
+
+- **Field Encryption Enterprise:** Enables granular, field-level encryption with flexible policies, API support, and customer-managed key capabilities.  
+- **Cloud Encryption (CE):** Provides volume-level encryption, supporting customer managed keys.  
+
+**Full Disk Encryption (FDE):** Encrypts physical disks at the hardware layer and requires dedicated hosting infrastructure.
 
 \* ServiceNow encryption options can be used individually or in combination.
 
 ---
 
 November 2025 | Release: Zurich  
-Page 26
-```
+
+26

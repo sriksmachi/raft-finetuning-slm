@@ -1,7 +1,8 @@
-```markdown
+White Paper  
+
 # Introduction
 
-### Video: Security Best Practices for the ServiceNow AI Platform
+▶️ Video: Security Best Practices for the ServiceNow AI Platform
 
 ## Document goal and structure
 
@@ -11,19 +12,16 @@ Each section is structured around the categories of Governance, Identify, Protec
 
 The focus of this guide is recommendations, rather than detailed platform descriptions. All stakeholders should review the white paper for full details.
 
-This document is designed to be read alongside [Securing the ServiceNow AI Platform](https://) which gives a holistic overview of the physical, administrative, and technical controls ServiceNow has in place to protect customer data.
+This document is designed to be read alongside Securing the ServiceNow AI Platform which gives a holistic overview of the physical, administrative, and technical controls ServiceNow has in place to protect customer data.
 
-In this document, security and compliance is considered from the perspective of the [National Institute of Standards and Technology (NIST) Cybersecurity Framework (CSF)](https://). The CSF is a set of voluntary guidelines, standards, and practices made available by NIST, an agency of the United States Department of Commerce.
+In this document, security and compliance is considered from the perspective of the National Institute of Standards and Technology (NIST) Cybersecurity Framework (CSF). The CSF is a set of voluntary guidelines, standards, and practices made available by NIST, an agency of the United States Department of Commerce.
 
-This Best Practices Guide is also available in the following languages: [Spanish](https://), [French](https://), [German](https://), [Dutch](https://), [Italian](https://), [Brazilian Portuguese](https://), [Korean](https://), and [Japanese](https://).
+This Best Practices Guide is also available in the following languages: Spanish, French, German, Dutch, Italian, Brazilian Portuguese, Korean, and Japanese.
 
----
-
-Note: All information in this white paper is related to the standard ServiceNow Commercial Cloud.
+> Note: All information in this white paper is related to the standard ServiceNow Commercial Cloud.
 
 For information related to other globally located ServiceNow in-country cloud offerings and how these offerings may differ, please contact your ServiceNow account representative.
 
----
+November 2025 | Release: Zurich  
 
-November 2025 | Release: Zurich
-```
+2

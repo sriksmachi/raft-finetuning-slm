@@ -1,38 +1,42 @@
-```markdown
-# Compliance: Regulatory and legal  
-## Data Security Addendum (DSA) and Data Processing Addendum (DPA)  
-
-### Customer responsibility  
-Customers need to be aware that the terms and conditions governing the use of the ServiceNow AI Platform are dependent on their order form agreement with ServiceNow, including matters of data security and privacy.  
-
-The [Data Security Addendum (DSA)](https://www.servicenow.com) covers key aspects of the ServiceNow security program: certifications and attestations, logging and monitoring, change control, and access administration, as well as other compliance and governance details.  
-
-The [Data Processing Addendum (DPA)](https://www.servicenow.com) reflects the customer's agreement regarding personal data. The DPA also defines the roles of the **data controller** and **data processor**, and describes the nature, scope, and purpose of the processing.  
-
-ServiceNow provides the current versions of these addenda on [Legal: Customer Agreements and Terms](https://www.servicenow.com) for general understanding; however, to understand the specific details, administrators are advised to reach out to their own compliance or legal support team.  
+White Paper  
 
 ---
 
-### Best practices  
+## Compliance: Regulatory and legal  
 
-#### Review and understand the DSA and DPA terms and conditions  
+### Data Security Addendum (DSA)  
+and Data Processing Addendum (DPA)  
+
+#### Customer responsibility  
+Customers need to be aware that the terms and conditions governing the use of the ServiceNow AI Platform are dependent on their order form agreement with ServiceNow, including matters of data security and privacy.  
+
+The Data Security Addendum (DSA) covers key aspects of the ServiceNow security program: certifications and attestations, logging and monitoring, change control, and access administration, as well as other compliance and governance details.  
+
+The Data Processing Addendum (DPA) reflects the customer’s agreement regarding personal data. The DPA also defines the roles of the data controller and data processor, and describes the nature, scope, and purpose of the processing.  
+
+ServiceNow provides the current versions of these addenda on Legal: Customer Agreements and Terms for general understanding; however, to understand the specific details, administrators are advised to reach out to their own compliance or legal support team.  
+
+---
+
+#### Best practices  
+
+**Review and understand the DSA and DPA terms and conditions**  
 Consult with your compliance and legal teams to ensure they have read and understand the ServiceNow DSA and/or DPA.  
 
-#### Where applicable, review the ServiceNow third party hosted product addendum  
+**Where applicable, review the ServiceNow third party hosted product addendum**  
 Work with compliance and legal teams to address any questions regarding the use of ServiceNow subscription products that use data hosting provided by third-party sub-processors (third party hosted products).  
 
 ---
 
-### Additional information  
-- [Legal: Customer agreements and terms](https://www.servicenow.com)  
-- [Data Security Addendum (DSA)](https://www.servicenow.com)  
-- [Data Processing Addendum (DPA)](https://www.servicenow.com)  
-- [ServiceNow third party hosted product addendum](https://www.servicenow.com)  
-- [Privacy/GDPR section in ServiceNow CORE](https://www.servicenow.com)  
-  Requires access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](https://www.servicenow.com).  
+#### Additional information  
 
----
+- Legal: Customer agreements and terms  
+- Data Security Addendum (DSA)  
+- Data Processing Addendum (DPA)  
+- ServiceNow third party hosted product addendum  
+- Privacy/GDPR section in ServiceNow CORE  
+  Requires access to the ServiceNow CORE Compliance Portal. Find out how to access CORE here.  
 
 November 2025 | Release: Zurich  
-Page 10
-```
+
+10

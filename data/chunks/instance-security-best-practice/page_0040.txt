@@ -1,11 +1,16 @@
-```markdown
+DETECT
+
+White Paper
+
 # Penetration testing
 
 ## Customer responsibility
-Customers may perform application [penetration testing](#) against their sub-production instance(s) in accordance with the ServiceNow Customer Penetration Testing Policy. (Link requires a ServiceNow Support account.)
+
+Customers may perform application penetration testing against their sub-production instance(s) in accordance with the ServiceNow Customer Penetration Testing Policy. (Link requires a ServiceNow Support account.)
 
 ## ServiceNow responsibility
-ServiceNow performs nightly web application security testing using automated and manual techniques, along with third-party security scanning tools.
+
+ServiceNow performs nightly web application security testing using automated and manual techniques, along with third- party security scanning tools.
 
 This process ensures that security assessments are integrated during code development. Findings identified during testing are reviewed by the ServiceNow Product Security Team and forwarded to development for remediation.
 
@@ -16,22 +21,26 @@ The assessment typically spans several months and follows an iterative process w
 ## Best practices
 
 ### Create a process to examine ServiceNow penetration test reports periodically
-Create a process to ensure stakeholders, such as your security team, review the most recent published [ServiceNow penetration test reports](#) on the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](#).
+
+Create a process to ensure stakeholders, such as your security team, review the most recent published ServiceNow penetration test reports on the ServiceNow CORE Compliance Portal. Find out how to access CORE here.
 
 ### Determine if your organization requires penetration testing of an instance
+
 As a security best practice, organizations should collaborate with security and compliance teams to identify which ServiceNow instances require penetration testing and establish a clear process for these assessments. This procedure should be reviewed regularly to ensure it remains aligned with evolving security requirements and organizational needs, allowing timely updates if the scope of testing or risk profile changes.
 
 ### Define penetration test scope and systematically address findings
+
 For annual application penetration tests, customers are required to install all updates, harden their ServiceNow instance, and meet the prerequisites outlined in the Customer Penetration Testing Policy. After completing these steps, a penetration test can be scheduled.
 
 Administrators should collaborate closely with their organization’s security teams to define the appropriate scope and duration for any scheduled penetration tests. Once testing is complete, administrators and security personnel must coordinate to review any findings, prioritize remediation efforts, and establish clear timelines to address findings.
 
 ## Additional information
-- [Penetration test summary reports](#)
-- [Customer penetration testing policy](#)
-- [ServiceNow CORE Compliance Portal Directory](#)  
-  (Requires access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](#).)
 
-**November 2025 | Release: Zurich**  
-**40**
-```
+- Penetration test summary reports  
+- Customer penetration testing policy  
+- ServiceNow CORE Compliance Portal Directory  
+(Requires access to the ServiceNow CORE Compliance Portal. Find out how to access CORE here.)
+
+November 2025 | Release: Zurich
+
+40

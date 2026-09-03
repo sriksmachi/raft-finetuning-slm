@@ -1,14 +1,15 @@
-```markdown
-# Authorization
+## Authorization
 
-## Customer responsibility
+### Customer responsibility
+
 Customers are responsible for defining user roles based on job functions and assigning appropriate permissions using role-based access control (RBAC) and access control lists (ACLs). It is recommended to configure ACLs to enforce the principle of least privilege and use non-production instances to test changes before deployment.
 
 ---
 
-## Best practices
+### Best practices
 
-### Distinguish between interactive vs non-interactive user accounts
+#### Distinguish between interactive vs non-interactive user accounts
+
 **Interactive user accounts** should use MFA and role-based access controls, ensuring least privilege and tying actions to individuals for accountability.
 
 **Non-interactive accounts**, intended for integrations and automation, should authenticate via API keys or OAuth tokens, have roles restricted to their purpose, utilize IP restrictions when possible, and link actions to the system or team.
@@ -17,29 +18,34 @@ The key differences include accountability (individual vs system), licensing, au
 
 For integration accounts, enable the web services access flag to prevent those accounts from using interactive sessions.
 
-### Define roles clearly
+#### Define roles clearly
+
 Identify each job function that will interact with the ServiceNow AI Platform and assign specific user roles with clear names and descriptions. Update roles as business needs evolve and communicate privileges to users. Adopt the concept of least-privileged access. This ensures effective access control and simplifies auditing.
 
-### Ensure each user has a unique user account
+#### Ensure each user has a unique user account
+
 Ensure that every user is assigned a unique user account within the system. This approach strengthens accountability, enables precise access management, and supports auditing of user activities.
 
-### Machine Identity Console
+#### Machine Identity Console
+
 A machine identity refers to a service account used for inbound API integrations. The Machine Identity Console provides visibility into these identities by listing all accounts with Web Service Access Enabled set to true and/or those that have accessed an API.
 
 These identities are critical for automation, integration, and secure communication, but they’re often invisible and unmanaged. To maintain security and accountability, ensure that individual user accounts are separate from service accounts used for supporting unattended or automation processes.
 
 It is recommended that customers limit the use of personal identities for executing unattended automations or integrations. By implementing ServiceNow access policy restrictions to clearly separate these data flows, organizations can better define and uphold policies aligned with their identity architecture.
 
-### Use security attributes when possible
+#### Use security attributes when possible
+
 Customers should utilize applicable security attributes when possible. Security attributes offer an alternative method for access control via role definitions.
 
-### Use security data filters when possible
+#### Use security data filters when possible
+
 Security data filters enable access restriction to records based on a user’s role, or other security attribute-related assertions. Security data filters are applied before a query is executed and ensure only authorized users can view records regardless of how data is accessed. Customers should explicitly enable security data filters for user-facing queries that are not using GlideRecordSecure.
 
-*Note*: Security data filters may impact system performance and slow query and page load times, if not used carefully.
+Note: Security data filters may impact system performance and slow query and page load times, if not used carefully.
 
 ---
 
 November 2025 | Release: Zurich
-Page 20
-```
+
+20

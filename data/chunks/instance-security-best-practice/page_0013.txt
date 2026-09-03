@@ -1,40 +1,52 @@
-```markdown
-# Assess ServiceNow as a vendor
+ASSESS  
+SERVICENOW
 
-### Customer responsibility
+White Paper  
+
+Assess ServiceNow as a vendor
+================================
+
+Customer responsibility
+-----------------------
+
 Third Party Risk Management represents a critical requirement for customers. Customers are expected to use the ServiceNow CORE Compliance Portal to access all relevant documentation required for internal and regulatory assessments. This includes reviewing certifications, attestations, and completed questionnaires, as well as standard operating procedures, policies, and other materials, in order to gain a comprehensive understanding of the ServiceNow security posture.
 
-Access to the [ServiceNow CORE Compliance Portal](#) is managed by the customer, who controls user access, admin rights, and deprovisioning.
+Access to the ServiceNow CORE Compliance Portal is managed by the customer, who controls user access, admin rights, and deprovisioning.
 
----
+Best practices
+--------------
 
-### Best practices
+**Ensure key stakeholders have access to the ServiceNow CORE Compliance Portal**
 
-#### Ensure key stakeholders have access to the ServiceNow CORE Compliance Portal
 Establish a formal procedure to identify relevant parties, including compliance teams, vendor risk assessment teams, and security personnel who require access to CORE documentation for internal audits and vendor evaluations, and provide them with the necessary portal access.
 
-#### Periodically review the ServiceNow CORE Compliance Portal
+**Periodically review the ServiceNow CORE Compliance Portal**
+
 Establish a process involving relevant stakeholders to conduct regular reviews of CORE content and implement a method for collecting and addressing clarification questions following material review.
 
-#### Use the completed questionnaires in the ServiceNow CORE Compliance Portal to support due diligence efforts
-Use the ServiceNow pre-completed Consensus Assessment Initiative Questionnaire (CAIQ) and Standardized Information Gathering (SIG) questionnaire to simplify your evaluation process. (Links require access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](#).) These resources save time, speed up risk assessments, and help stakeholders quickly find key details for audits. For any questions, our account teams are available to assist promptly.
+**Use the completed questionnaires in the ServiceNow CORE Compliance Portal to support due diligence efforts**
 
-#### Periodically review the ServiceNow Customer Security Portal
+Use the ServiceNow pre-completed Consensus Assessment Initiative Questionnaire (CAIQ) and Standardized Information Gathering (SIG) questionnaire to simplify your evaluation process. (Links require access to the ServiceNow CORE Compliance Portal. Find out how to access CORE here.) These resources save time, speed up risk assessments, and help stakeholders quickly find key details for audits. For any questions, our account teams are available to assist promptly.
+
+**Periodically review the ServiceNow Customer Security Portal**
+
 Establish a process to conduct regular reviews of the Customer Security Portal, including compliance certifications, security advisories, Common Vulnerabilities and Exposures (CVEs), SOC reports, and instance security best practices. Whether evaluating ServiceNow as a vendor or seeking guidance on instance security, this portal serves as a centralized resource for all ServiceNow security needs.
 
----
+Additional information
+----------------------
 
-### Additional information
-- [Video: ServiceNow CORE Compliance Portal](#)
-- [ServiceNow Customer Security Portal](#)
-- [Cloud Security Alliance (CSA) STAR Level 1 (CAIQ and EU Cloud) and Level 2 (STAR Certification)](#)
+* Video: ServiceNow CORE Compliance Portal  
 
-The links below require access to the ServiceNow CORE Compliance Portal. Find out how to access CORE [here](#).
-- [Higher Education Community Vendor Assessment Toolkit (HECVAT)](#)
-- [Standardized Information Gathering (SIG) questionnaire](#)
-- [ServiceNow CORE Compliance Portal Directory](#)
+* ServiceNow Customer Security Portal  
 
----
+* Cloud Security Alliance (CSA) STAR Level 1 (CAIQ and EU Cloud) and Level 2 (STAR Certification)  
 
-November 2025 | Release: Zurich
-```
+The links below require access to the ServiceNow CORE Compliance Portal. Find out how to access CORE here.
+
+* Higher Education Community Vendor Assessment Toolkit (HECVAT)  
+
+* Standardized Information Gathering (SIG) questionnaire  
+
+* ServiceNow CORE Compliance Portal Directory  
+
+November 2025 | Release: Zurich                                                     13
