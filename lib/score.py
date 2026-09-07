@@ -5,22 +5,54 @@ from __future__ import annotations
 import json
 import os
 import time
+from pathlib import Path
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from lib.prompts import SYSTEM_PROMPT, user_prompt
+# score.py and prompts.py sit side by side in lib/. AML puts the scoring
+# script's own directory on sys.path, so `from lib.prompts import ...` fails
+# in the container; a sibling import always resolves.
+from prompts import SYSTEM_PROMPT, user_prompt
 
 model = None
 tokenizer = None
 
 
+def _resolve_checkpoint(model_dir: str) -> str:
+    """Return the folder inside ``AZUREML_MODEL_DIR`` that holds the checkpoint.
+
+    Registered AML model assets frequently nest the Transformers artifacts one
+    or more folders below the mount root (e.g. ``.../1/outputs/model``), so
+    ``from_pretrained`` on the mount itself raises ``OSError``. Walk the tree
+    for the single directory that contains both ``config.json`` and
+    ``tokenizer_config.json``.
+    """
+    root = Path(model_dir)
+    if (root / "config.json").exists() and (root / "tokenizer_config.json").exists():
+        return str(root)
+    candidates = [
+        config.parent
+        for config in root.rglob("config.json")
+        if (config.parent / "tokenizer_config.json").exists()
+    ]
+    if len(candidates) == 1:
+        print(f"[score] resolved checkpoint at {candidates[0]}", flush=True)
+        return str(candidates[0])
+    listing = sorted(p.relative_to(root) for p in root.rglob("*") if p.is_file())[:50]
+    raise RuntimeError(
+        f"Could not locate a Transformers checkpoint under {root!r}. "
+        f"Expected exactly one folder containing config.json + tokenizer_config.json; "
+        f"found {len(candidates)}. Mount contents (first 50): {listing}"
+    )
+
+
 def init() -> None:
     global model, tokenizer
-    model_dir = os.environ["AZUREML_MODEL_DIR"]
-    tokenizer = AutoTokenizer.from_pretrained(model_dir)
+    checkpoint_dir = _resolve_checkpoint(os.environ["AZUREML_MODEL_DIR"])
+    tokenizer = AutoTokenizer.from_pretrained(checkpoint_dir)
     model = AutoModelForCausalLM.from_pretrained(
-        model_dir,
+        checkpoint_dir,
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
         device_map="auto" if torch.cuda.is_available() else None,
     )
