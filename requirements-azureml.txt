@@ -7,5 +7,6 @@ peft>=0.15,<1
 pytest>=8,<9
 shap>=0.47,<1
 azureml-fsspec>=1.0,<2
-setuptools
+# azureml-dataprep still imports pkg_resources, which setuptools 81+ removed.
+setuptools<81
 azure-ai-evaluation

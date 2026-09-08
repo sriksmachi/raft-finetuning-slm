@@ -30,6 +30,7 @@ Run in order from the repository root. Each stage produces the inputs the next s
 
 | # | Notebook | Description | Outputs | Dependencies |
 |---|----------|-------------|---------|--------------|
+| 00 | [Workspace Readiness](notebooks/00_workspace_readiness.ipynb) | Health-checks the active kernel and compute before any fine-tuning work: Python and package versions, GPU/CUDA/VRAM/bf16, Azure ML workspace and GPU compute visibility, Hugging Face Hub reachability, a two-step QLoRA SFT loop, and a sample generation. Emits a PASS/FAIL summary; raises `AssertionError` if any required check fails. Run this first after provisioning or restarting compute to confirm the environment is fine-tuning-ready. | Structured readiness report in the notebook output. | The venv from [scripts/setup_env.sh](scripts/setup_env.sh); GPU compute; Azure ML workspace access. |
 | 01 | [Data Preparation](notebooks/01_prepare_data.py) | Extracts PDF chunks, generates and validates local RAFT JSONL splits with grouped (leakage-free) train/validation/test partitioning, fingerprints the dataset, and optionally publishes an immutable Azure ML data asset. Synthetic generation is optional and billable. | Local `train`/`validation`/`test` JSONL splits, `manifest.json` (split counts, class balance, SHA-256 fingerprint), versioned Azure ML data asset. | Local PDF/text chunks; Azure OpenAI (only for synthetic generation); Azure ML workspace/datastore (only to publish). |
 | 02 | [Data Exploration](notebooks/02_data_exploration.ipynb) | Explores the generated dataset: validates oracle/distractor balance and answer formatting, and analyzes CoT answer and instruction length distributions to choose `max_new_tokens` and `max_seq_length` for training. | Quality/balance summaries, length-distribution plots, computed columns persisted for training configuration. | Local RAFT JSONL splits from 01. |
 | 03 | [Azure ML Fine-Tuning](notebooks/03_azureml_fine_tuning.ipynb) | Registers a pinned CUDA environment, submits a managed-identity SLM fine-tuning command job (`lib/train.py`) with PEFT/LoRA-style adaptation and prompt-token loss masking, tracks it with MLflow, writes a merged model to the datastore, and registers a candidate model. | Registered training environment, completed MLflow job run, merged model in the workspace datastore, registered candidate model version. | Versioned data asset from 01; GPU compute cluster with managed identity; base weights via Azure AI Foundry catalog or Hugging Face (Key Vault token). |
@@ -43,12 +44,15 @@ Prior exploratory and Kaggle notebooks are retained under `notebooks/legacy/` fo
 ```text
 .
 ├── notebooks/
+│   ├── 00_workspace_readiness.ipynb
 │   ├── 01_prepare_data.py
 │   ├── 02_data_exploration.ipynb
 │   ├── 03_azureml_fine_tuning.ipynb
 │   ├── 04_azureml_offline_inference_evaluation.ipynb
 │   ├── 05_inference_evaluation_monitoring.ipynb
 │   └── legacy/
+├── scripts/
+│   └── setup_env.sh         # Provision /mnt venv + Jupyter kernel on AML compute
 ├── lib/
 │   ├── azureml_ops.py       # Jobs, assets, registration, deployment, promotion
 │   ├── config.py            # Environment-driven workspace connection
@@ -69,7 +73,7 @@ Prior exploratory and Kaggle notebooks are retained under `notebooks/legacy/` fo
 
 ## Prerequisites
 
-- Python 3.11
+- Python 3.12.10 (pinned by `environments/train-conda.yml` for training; the local notebook kernel should match)
 - Azure CLI authenticated with `az login` for local work
 - Azure ML workspace and GPU/CPU compute clusters
 - Permissions to create Azure ML assets, jobs, endpoints, deployments, and schedules
@@ -78,7 +82,22 @@ Prior exploratory and Kaggle notebooks are retained under `notebooks/legacy/` fo
 - Accepted license/access for `meta-llama/Llama-3.2-1B-Instruct`
 - Azure OpenAI only when regenerating synthetic data from local documents
 
-Install the notebook/control-plane environment:
+### Local environment on Azure ML compute
+
+Use [scripts/setup_env.sh](scripts/setup_env.sh) to provision a Python 3.12.10 venv on the compute VM's local `/mnt` scratch disk. `/mnt` is dramatically faster than `~/cloudfiles` (an Azure Files share) for `import`-heavy notebooks, but it is wiped on compute stop/restart, so re-run the script after every restart.
+
+```bash
+bash scripts/setup_env.sh
+source /mnt/tmp/venvs/raft-py312-mnt/bin/activate
+```
+
+The script installs `uv`, pins its Python install and wheel cache to `/mnt`, installs `requirements-azureml.txt` and `requirements.txt`, and registers a Jupyter kernelspec named `raft-py312-mnt` (display name `Python 3.12.10 (raft /mnt)`) so the notebooks can pick it directly. Override `VENV_DIR`, `KERNEL_NAME`, or `KERNEL_DISPLAY_NAME` to run multiple parallel environments.
+
+After setup, open [notebooks/00_workspace_readiness.ipynb](notebooks/00_workspace_readiness.ipynb) with the `raft-py312-mnt` kernel and run it top-to-bottom to confirm the environment is fine-tuning-ready before submitting any Azure ML jobs.
+
+### Local environment on a workstation
+
+For local (non-Azure ML compute) work, a plain venv is enough:
 
 ```powershell
 python -m venv .venv

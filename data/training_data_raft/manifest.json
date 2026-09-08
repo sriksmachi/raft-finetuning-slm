@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "created_at_utc": "2026-08-05T04:44:58.955374+00:00",
+  "fingerprint_sha256": "34823398f4e621665b8b20a2c5f8a42649d48659b315d2f8172942bc1b1fb7dd",
+  "splits": {
+    "train": {
+      "rows": 565,
+      "types": {
+        "oracle": 467,
+        "distractor": 98
+      },
+      "duplicates": 0
+    },
+    "validation": {
+      "rows": 70,
+      "types": {
+        "oracle": 55,
+        "distractor": 15
+      },
+      "duplicates": 0
+    },
+    "test": {
+      "rows": 75,
+      "types": {
+        "oracle": 57,
+        "distractor": 18
+      },
+      "duplicates": 0
+    }
+  }
+}

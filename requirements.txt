@@ -28,3 +28,7 @@ tqdm==4.66.2
 spacy
 torch
 transformers
+trl
+sentencepiece
+bitsandbytes 
+accelerate
