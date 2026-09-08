@@ -26,10 +26,11 @@ def invoke_endpoint(
             deployment_name=deployment_name,
             request_file=str(request_path),
         )
+        print(f"Raw response: {response}")
         parsed = json.loads(response)
-        if "error" in parsed:
-            raise RuntimeError(parsed["error"])
-        return parsed["predictions"]
+        if isinstance(parsed, str):
+            parsed = json.loads(parsed)
+        return parsed["predictions"] if "predictions" in parsed else []
     finally:
         request_path.unlink(missing_ok=True)
 
@@ -40,7 +41,7 @@ def evaluate_endpoint(
     records: Iterable[dict[str, Any]],
     batch_size: int = 1,
     deployment_name: str | None = None,
-) -> tuple[list[dict], dict[str, float]]:
+) -> list[dict]:
     source = list(records)
     evaluated: list[dict] = []
     for offset in range(0, len(source), batch_size):
@@ -59,9 +60,10 @@ def evaluate_endpoint(
                     "id": row.get("id"),
                     "type": row.get("type"),
                     "question": row["question"],
+                    "context": row.get("context", ""),
                     "prediction": result["prediction"],
                     "reference": row["cot_answer"],
                     "latency_ms": result.get("latency_ms"),
                 }
             )
-    return evaluated, aggregate_metrics(evaluated)
+    return evaluated

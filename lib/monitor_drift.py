@@ -8,8 +8,12 @@ from pathlib import Path
 
 import mlflow
 
-from lib.data import read_jsonl
-from lib.monitoring import detect_drift, write_json_artifact
+if __package__:
+    from lib.data import read_jsonl
+    from lib.monitoring import detect_drift, write_json_artifact
+else:
+    from data import read_jsonl
+    from monitoring import detect_drift, write_json_artifact
 
 
 def parse_args() -> argparse.Namespace:

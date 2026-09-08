@@ -6,7 +6,6 @@ import json
 import math
 from pathlib import Path
 from typing import Any, Iterable
-
 import numpy as np
 
 
@@ -21,6 +20,7 @@ def _features(record: dict[str, Any]) -> dict[str, float]:
 
 
 def create_reference_profile(records: Iterable[dict[str, Any]], bins: int = 10) -> dict:
+    """Create a reference profile for feature-profile drift detection."""
     rows = list(records)
     if not rows:
         raise ValueError("Reference records cannot be empty")
