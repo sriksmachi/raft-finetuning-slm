@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SLM Studio</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">SLM<span>Studio</span></a>
+    <div class="mode-control">
+      <label for="mode">Mode</label>
+      <select id="mode" aria-describedby="mode-note">
+        <option value="demo">Demo</option>
+        <option value="production" disabled>Production (not connected)</option>
+      </select>
+    </div>
+  </header>
+  <div class="notice" id="mode-note">
+    Demo only. No Azure services are called.
+  </div>
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="eyebrow">YOUR WORKSPACE</p>
+      <h1>Specialize.<br>Compare.<br>Decide.</h1>
+      <p class="muted">A focused path from training data to a deployment decision.</p>
+      <button id="new-run" class="primary" type="button">+ New run</button>
+      <div class="section-heading"><h2>Recent runs</h2><button id="refresh" class="quiet" type="button">Refresh</button></div>
+      <label class="sr-only" for="run-select">Select a run</label>
+      <select id="run-select"><option value="">Loading runs...</option></select>
+      <div id="run-list" class="run-list" aria-label="Recent runs"></div>
+      <div class="sidebar-note">
+        <strong>Explore the decision, not a dashboard.</strong>
+        <p>Review the candidate, compare it with the baseline, and make an
+        evidence-based registration and deployment decision.</p>
+      </div>
+    </aside>
+    <main>
+      <div class="page-heading">
+        <div><p class="eyebrow">FINE-TUNING WORKFLOW</p><h2 id="run-title">SLM Studio</h2><p id="run-meta" class="muted">Loading your workspace...</p></div>
+        <span id="run-status" class="badge">LOADING</span>
+      </div>
+      <div id="error" class="error" role="alert" hidden></div>
+      <nav id="stage-nav" class="stage-nav" aria-label="Workflow stages"></nav>
+      <section id="progress-panel" class="progress-panel" aria-live="polite" hidden>
+        <div><strong id="progress-label">Stage progress</strong><span id="progress-value"></span></div>
+        <progress id="stage-progress" max="100" value="0">0%</progress>
+        <small>Progress updates appear here while a stage is running.</small>
+      </section>
+
+      <section id="panel-data_preparation" class="panel">
+        <p class="eyebrow">STAGE 01</p><h2>Prepare training data</h2>
+        <p class="muted">Choose your data folder and generation recipe, then review the resulting data card.</p>
+        <div id="data-summary"></div>
+        <form id="create-form">
+          <div class="form-grid">
+            <label>Data folder<input name="source_folder" value="documents/network-operations" maxlength="240" required></label>
+            <label>Generation recipe<select name="recipe" aria-describedby="recipe-explanation"><option value="context-grounded">Context-grounded (RAFT)</option><option value="context-assisted">Context-assisted (RAG)</option></select></label>
+          </div>
+          <p id="recipe-explanation" class="hint">RAFT builds training examples with relevant and distractor documents. RAG retrieves supporting documents when answering; it is not a fine-tuning method by itself.</p>
+          <details>
+            <summary>Example workflow options</summary>
+            <label>Outcome<select name="scenario"><option value="passing">Passing candidate</option><option value="blocked">Blocked gate</option><option value="failure">Training failure</option></select></label>
+          </details>
+          <label class="check"><input name="confirmed" type="checkbox" required>I confirm the data source and generation recipe.</label>
+          <button class="primary" type="submit">Prepare data</button>
+        </form>
+      </section>
+
+      <section id="panel-training" class="panel" hidden>
+        <p class="eyebrow">STAGE 02</p><h2>Configure fine-tuning</h2>
+        <p class="muted">Review the suggested parameters and adjust them for your dataset before starting training.</p>
+        <div id="training-summary"></div>
+        <form id="training-form">
+          <div class="form-grid">
+            <label>Base model<select name="base_model"></select></label>
+            <label>Maximum sequence length<input name="max_seq_length" type="number" value="2048" min="128" max="32768" step="1" required></label>
+            <label>Batch size<input name="batch_size" type="number" value="2" min="1" max="64" step="1" required></label>
+            <label>Gradient accumulation<input name="gradient_accumulation" type="number" value="16" min="1" max="256" step="1" required></label>
+            <label>Learning rate<input name="learning_rate" type="number" value="0.00002" min="0.0000001" max="0.01" step="any" required></label>
+            <label>Epochs<input name="epochs" type="number" value="1" min="0.1" max="20" step="any" required></label>
+            <label>LoRA rank<input name="lora_rank" type="number" value="8" min="1" max="256" step="1" required></label>
+          </div>
+          <p id="suggestion-note" class="hint"></p>
+          <div class="actions"><button id="suggest" type="button">Suggest parameters</button></div>
+          <label class="check"><input name="confirmed" type="checkbox" required>I confirm these training parameters.</label>
+          <button id="train" class="primary" type="submit">Start training</button>
+        </form>
+      </section>
+
+      <section id="panel-evaluation" class="panel" hidden>
+        <p class="eyebrow">STAGE 03</p><h2>Compare the candidate</h2>
+        <p class="muted">Compare the fine-tuned SLM, original SLM, and GPT baseline on the same sealed test split.</p>
+        <div id="evaluation-summary"></div>
+        <form id="evaluation-form">
+          <label class="check"><input name="confirmed" type="checkbox" required>I confirm the candidate and evaluation test split.</label>
+          <button id="evaluate" class="primary" type="submit">Run evaluation</button>
+        </form>
+      </section>
+
+      <section id="panel-decision" class="panel" hidden>
+        <p class="eyebrow">STAGE 04</p><h2>Review the evidence</h2>
+        <p class="muted">A recommendation is advisory. Registration and deployment remain separate, deliberate actions.</p>
+        <div id="decision-summary"></div>
+        <form id="register-form">
+          <label>Approver<input name="actor" value="local-user" maxlength="100" required></label>
+          <div id="override-fields" class="override-fields" hidden>
+            <label class="check"><input name="override" type="checkbox">Override this blocked gate</label>
+            <label>Type OVERRIDE to confirm<input name="confirmation" autocomplete="off" placeholder="OVERRIDE" maxlength="20"></label>
+            <label>Reason for override<textarea name="reason" rows="2" maxlength="1000" placeholder="Record why you chose to override the evidence."></textarea></label>
+          </div>
+          <label class="check"><input name="confirmed" type="checkbox" required>Register this candidate. This does not deploy a model.</label>
+          <button id="register" class="primary" type="submit">Register candidate</button>
+        </form>
+      </section>
+
+      <section id="panel-deployment" class="panel" hidden>
+        <p class="eyebrow">STAGE 05</p><h2>Deployment and monitoring</h2>
+        <p class="muted">Deploy the registered candidate, then review post-deployment evaluation and monitoring.</p>
+        <div id="deployment-summary"></div>
+        <form id="deployment-form">
+          <label class="check"><input name="confirmed" type="checkbox" required>I confirm deployment of this registered candidate.</label>
+          <button id="deploy" class="primary" type="submit">Deploy model</button>
+        </form>
+      </section>
+
+      <details class="record-panel">
+        <summary>Inspect the complete run record</summary>
+        <p class="hint">Workflow state, lineage, evaluation evidence, and decision audit.</p>
+        <button id="download" type="button">Download record as JSON</button>
+        <pre id="run-record">No run selected.</pre>
+      </details>
+    </main>
+  </div>
+  <footer>SLM Studio &middot; Fine-tuning workspace</footer>
+</body>
+</html>
