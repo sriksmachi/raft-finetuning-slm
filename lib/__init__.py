@@ -1,4 +1,4 @@
-"""Reusable components for the Azure ML RAFT workflow."""
+"""Reusable components for the SLM Studio Azure ML workflow."""
 
 from lib.config import AzureMLConfig
 

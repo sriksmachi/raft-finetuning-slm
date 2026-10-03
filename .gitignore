@@ -215,6 +215,7 @@ videos/
 
 # Model artifacts and downloaded checkpoints (mirror .amlignore)
 output/
+runs/
 output/downloaded_models/
 downloaded_models/
 *.safetensors

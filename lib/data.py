@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -112,41 +113,6 @@ def validate_dataset(dataset_dir: str | Path) -> dict[str, Any]:
     return summary
 
 
-def resplit_dataset_by_source(dataset_dir: str | Path, seed: int = 42) -> dict[str, int]:
-    """Rewrite splits so examples from one oracle context stay together."""
-    root = Path(dataset_dir)
-    records = [
-        row
-        for split in SPLITS
-        for row in read_jsonl(root / f"{split}.jsonl")
-    ]
-    source_keys = sorted(
-        {_source_key(row) for row in records},
-        key=lambda value: hashlib.sha256(f"{seed}:{value}".encode("utf-8")).hexdigest(),
-    )
-    train_end = int(0.8 * len(source_keys))
-    validation_end = int(0.9 * len(source_keys))
-    assignments = {
-        key: split
-        for split, keys in (
-            ("train", source_keys[:train_end]),
-            ("validation", source_keys[train_end:validation_end]),
-            ("test", source_keys[validation_end:]),
-        )
-        for key in keys
-    }
-    grouped = {split: [] for split in SPLITS}
-    for record in records:
-        grouped[assignments[_source_key(record)]].append(record)
-    for split, rows in grouped.items():
-        path = root / f"{split}.jsonl"
-        path.write_text(
-            "".join(json.dumps(row, ensure_ascii=True) + "\n" for row in rows),
-            encoding="utf-8",
-        )
-    return {split: len(rows) for split, rows in grouped.items()}
-
-
 def dataset_fingerprint(dataset_dir: str | Path) -> str:
     digest = hashlib.sha256()
     root = Path(dataset_dir)
@@ -189,7 +155,7 @@ def publish_data_asset(
         type=AssetTypes.URI_FOLDER,
         description=description,
         tags={
-            "framework": "RAFT",
+            "framework": "SLM Studio",
             "task": "context-grounded-generation",
             "fingerprint": dataset_fingerprint(dataset_dir),
             "manifest": manifest_path.name,

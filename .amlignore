@@ -6,6 +6,7 @@ data/
 notebooks/
 output/
 output/downloaded_models/
+runs/
 tests/
 azureml-artifacts/
 presentation/

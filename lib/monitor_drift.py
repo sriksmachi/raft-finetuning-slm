@@ -1,4 +1,8 @@
-"""Azure ML command-job entry point for scheduled request drift checks."""
+"""Scheduled drift checks on normalized production JSONL instruction/question records.
+
+Malformed records fail the job before metrics or artifacts are logged. No training
+or test dataset is substituted when the governed production input is absent.
+"""
 
 from __future__ import annotations
 

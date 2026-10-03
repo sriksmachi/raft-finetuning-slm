@@ -1,14 +1,14 @@
-"""Prepare and publish the RAFT dataset.
+"""Prepare and publish the SLM Studio context-grounded dataset.
 
-Extract PDF chunks, generate the RAFT dataset, validate it, and optionally
+Extract PDF chunks, generate the context-grounded dataset, validate it, and optionally
 publish a versioned Azure ML data asset. Run these commands from the repository
 root.
 
 Examples:
-    python notebooks/01_prepare_data.py                     # full pipeline
-    python notebooks/01_prepare_data.py --skip-extract      # reuse chunks
-    python notebooks/01_prepare_data.py --skip-generation   # validate + publish
-    python notebooks/01_prepare_data.py --skip-publish      # local-only run
+    python scripts/01_prepare_data.py                     # full pipeline
+    python scripts/01_prepare_data.py --skip-extract      # reuse chunks
+    python scripts/01_prepare_data.py --skip-generation   # validate + publish
+    python scripts/01_prepare_data.py --skip-publish      # local-only run
 """
 
 from __future__ import annotations
@@ -49,11 +49,11 @@ def parse_args() -> argparse.Namespace:
                         help="Skip PDF extraction and dataset generation")
     parser.add_argument("--skip-publish", action="store_true",
                         help="Skip Azure ML data asset publication")
-    parser.add_argument("--data-asset-name", default="raft-instance-security")
+    parser.add_argument("--data-asset-name", default="slm-studio-instance-security")
     parser.add_argument("--data-asset-version",
                         default=datetime.now(timezone.utc).strftime("%Y%m%d.%H%M%S"))
     parser.add_argument("--description",
-                        default="RAFT train/validation/test splits for instance-security grounded QA")
+                        default="SLM Studio train/validation/test splits for instance-security grounded QA")
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
     if not 0 <= args.oracle_probability <= 1:
@@ -62,7 +62,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def generate(args: argparse.Namespace) -> None:
-    from lib import pdf_to_chunks, raft_datagen
+    from lib import pdf_to_chunks, dataset_generation
 
     if not args.skip_extract:
         log.info("Extracting chunks from %s", args.pdf)
@@ -74,7 +74,7 @@ def generate(args: argparse.Namespace) -> None:
     else:
         log.info("Skipping PDF extraction, reusing %s", args.chunks_dir)
 
-    chunks = raft_datagen.load_chunks_from_dir(args.chunks_dir)
+    chunks = dataset_generation.load_chunks_from_dir(args.chunks_dir)
 
     # chunks = chunks[:10]  # Limit to first 10 chunks for testing purposes
 
@@ -83,13 +83,13 @@ def generate(args: argparse.Namespace) -> None:
     
     log.info("Loaded %d chunk(s)", len(chunks))
 
-    raft_datagen.generate_dataset(
+    dataset_generation.generate_dataset(
         chunks,
         num_questions=args.num_questions,
         p=args.oracle_probability,
     )
     
-    raft_datagen.save_datasets(raft_datagen.ds.to_pandas(), str(args.dataset_dir))
+    dataset_generation.save_datasets(dataset_generation.ds.to_pandas(), str(args.dataset_dir))
 
     log.info("Wrote splits to %s", args.dataset_dir)
 
