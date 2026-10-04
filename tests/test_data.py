@@ -1,9 +1,15 @@
 import json
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
-from lib.data import dataset_fingerprint, validate_dataset, write_manifest
+from lib.data import (
+    dataset_fingerprint,
+    publish_data_asset,
+    validate_dataset,
+    write_manifest,
+)
 
 
 def _record(question: str, sample_type: str = "oracle") -> dict:
@@ -68,3 +74,23 @@ def test_validate_dataset_warns_and_continues_for_duplicates(
 
     assert summary["train"]["duplicates"] == 1
     assert "train contains 1 duplicate question/context pairs" in caplog.text
+
+
+def test_publish_data_asset_uses_selected_datastore(tmp_path: Path) -> None:
+    _write_split(tmp_path, "train", [_record("train")])
+    _write_split(tmp_path, "validation", [_record("validation")])
+    _write_split(tmp_path, "test", [_record("test")])
+    ml_client = Mock()
+    ml_client.data.create_or_update.side_effect = lambda asset: asset
+
+    asset = publish_data_asset(
+        ml_client=ml_client,
+        dataset_dir=tmp_path,
+        name="dataset",
+        version="1",
+        description="description",
+        datastore="uploads",
+    )
+
+    assert asset.datastore == "uploads"
+    ml_client.data.create_or_update.assert_called_once_with(asset)

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from app.fixtures import STAGES, audit, now, seed_records
+from app.fixtures import STAGES, audit, candidate_release_result, now, seed_records
 
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,16 @@ class DemoStore:
                 for field in ("error", "started_at", "completed_at"):
                     if field not in state:
                         raise ValueError("Incomplete stage record.")
-            for field in ("data_card", "training", "evaluation", "deployment", "scenario"):
+            record.setdefault("release", None)
+            if (
+                record["release"] is None
+                and record["decisions"].get("registration")
+                and record.get("evaluation")
+            ):
+                record["release"] = candidate_release_result(
+                    record, record["decisions"]["registration"]
+                )
+            for field in ("data_card", "training", "evaluation", "release", "deployment", "scenario"):
                 if field not in record:
                     raise ValueError(f"Missing {field}.")
                 if field != "scenario" and record[field] is not None and not isinstance(record[field], dict):

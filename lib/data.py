@@ -142,6 +142,7 @@ def publish_data_asset(
     name: str,
     version: str,
     description: str,
+    datastore: str | None = None,
 ):
     from azure.ai.ml.constants import AssetTypes
     from azure.ai.ml.entities import Data
@@ -154,6 +155,7 @@ def publish_data_asset(
         path=str(Path(dataset_dir).resolve()),
         type=AssetTypes.URI_FOLDER,
         description=description,
+        datastore=datastore,
         tags={
             "framework": "SLM Studio",
             "task": "context-grounded-generation",

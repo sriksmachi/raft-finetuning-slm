@@ -108,6 +108,40 @@ def test_test_sampling_is_reproducible_and_rejects_invalid_limit(tmp_path):
         load({"test": path}, "test", 0, None, 42)
 
 
+def test_gpt_call_uses_max_completion_tokens_for_reasoning_models():
+    completion = Mock(
+        return_value=SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="answer"),
+                    finish_reason="stop",
+                )
+            ],
+            usage=SimpleNamespace(completion_tokens=4),
+        )
+    )
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=completion))
+    )
+
+    call_gpt_with_retry = _functions(
+        ROOT / "lib" / "inference.py",
+        {"call_gpt_with_retry"},
+        {"random": random, "time": time, "log": logging.getLogger("test")},
+    )["call_gpt_with_retry"]
+    result = call_gpt_with_retry(
+        client,
+        "gpt-5.4-mini",
+        [{"role": "user", "content": "Question"}],
+        max_new_tokens=128,
+        max_retries=1,
+    )
+
+    assert result["text"] == "answer"
+    assert completion.call_args.kwargs["max_completion_tokens"] == 128
+    assert "max_tokens" not in completion.call_args.kwargs
+
+
 def test_all_three_responses_get_scores_reasons_and_exact_reference():
     judge = Mock(side_effect=_scores)
     result = evaluate_rag_predictions([_wide_row()], judge)[0]

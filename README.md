@@ -88,13 +88,46 @@ Every job submitted by 02 is recorded as a YAML file under `runs/` (see `lib/run
 
 - Python 3.12.10 (pinned by `environments/train-conda.yml` for training; the local notebook kernel should match)
 - Azure CLI authenticated with `az login` for local work
-- Azure ML workspace and GPU/CPU compute clusters
+- Azure ML workspace, GPU/CPU compute clusters, and at least one datastore
 - Permissions to create Azure ML assets, jobs, endpoints, deployments, and schedules
 - Managed identity on compute with least-privilege datastore access
 - Azure Key Vault access for a gated Hugging Face model token
 - Accepted license/access for `meta-llama/Llama-3.2-3B-Instruct`
 - Azure OpenAI only when regenerating synthetic data from local documents
 - Azure OpenAI / Azure AI Foundry GPT deployment for Stage 03 comparison and judging
+
+### Azure ML datastore
+
+Stage 01 uploads the generated dataset through an Azure ML datastore. Before
+running `scripts/01_prepare_data.py`, create a datastore backed by an existing
+Blob Storage container if the workspace does not already have one. Save the
+following as `datastore.yml`, replacing the placeholder values:
+
+```yaml
+$schema: https://azuremlschemas.azureedge.net/latest/azureBlob.schema.json
+name: <datastore-name>
+type: azure_blob
+account_name: <storage-account-name>
+container_name: <container-name>
+```
+
+Create the datastore in the target workspace:
+
+```powershell
+az login
+az extension add --name ml
+az ml datastore create `
+  --file .\datastore.yml `
+  --resource-group <resource-group> `
+  --workspace-name <workspace-name>
+```
+
+This credentialless definition uses identity-based access. Grant the user
+running Stage 01 and the relevant compute managed identities the least
+privilege required on the container, such as `Storage Blob Data Contributor`.
+Then set `AZUREML_DATASTORE_NAME=<datastore-name>` in `.env` or pass
+`--datastore <datastore-name>` to Stage 01. The storage account and container
+must exist before creating the datastore.
 
 ### Local tokenizer-loading compatibility
 
@@ -104,9 +137,10 @@ Transformers 4.57.2 has a local-checkpoint tokenizer-loading bug that raises
 passed to Unsloth; it is not a dataset or response-masking error. The
 training and inference configurations pin `transformers==4.57.1` to avoid
 the 4.57.2 regression. Both use `torch>=2.9,<2.10` with the CUDA 12.8 wheel
-index. Unsloth, TRL, and xFormers are not pinned to exact versions; verify
-the resolved versions in the job's startup logs rather than assuming a
-fixed dependency set.
+index and pin `torchao==0.17.0`; TorchAO 0.18 requires a newer Torch API and
+fails while importing Unsloth with Torch 2.9. Unsloth, TRL, and xFormers are
+not pinned to exact versions; verify the resolved versions in the job's startup
+logs rather than assuming a fixed dependency set.
 
 Submit training with environment `slm-studio-finetuning`, with its version read
 from `AZURE_TRAIN_ENVIRONMENT_VERSION` in `.env`, using
@@ -179,12 +213,18 @@ Set workspace identifiers in `.env` or the process environment:
 AZURE_SUBSCRIPTION_ID=<subscription-id>
 AZURE_RESOURCE_GROUP=<resource-group>
 AZUREML_WORKSPACE_NAME=<workspace-name>
+AZUREML_DATASTORE_NAME=<datastore-name>
 
 # Required only for synthetic data generation
 AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/
 AZURE_OPENAI_API_VERSION=2024-08-01-preview
 AZURE_OPENAI_GPT_DEPLOYMENT=gpt vision
 ```
+
+`AZUREML_DATASTORE_NAME` is optional when the workspace has a default
+datastore. If the workspace has no `workspaceblobstore` default, set it to an
+existing datastore or pass `--datastore <datastore-name>` to
+`scripts/01_prepare_data.py`.
 
 >> Do not store credentials or tokens in `.env`, notebooks, job parameters, or MLflow. The training job can retrieve a Hugging Face token from Key Vault using managed identity.
 

@@ -8,7 +8,13 @@ from app.models import Parameters
 STAGES = ["data_preparation", "training", "evaluation", "decision", "deployment"]
 MODELS = [
     {"id": "demo-phi-3-mini", "label": "Phi-3 Mini (simulated)"},
+    {"id": "demo-phi-4-mini", "label": "Phi-4 Mini (simulated)"},
+    {"id": "demo-llama-3.2-1b", "label": "Llama 3.2 1B (simulated)"},
     {"id": "demo-llama-3.2-3b", "label": "Llama 3.2 3B (simulated)"},
+    {"id": "demo-qwen-2.5-1.5b", "label": "Qwen 2.5 1.5B (simulated)"},
+    {"id": "demo-qwen-2.5-3b", "label": "Qwen 2.5 3B (simulated)"},
+    {"id": "demo-ministral-3b", "label": "Ministral 3B (simulated)"},
+    {"id": "demo-mistral-7b-instruct", "label": "Mistral 7B Instruct (simulated)"},
 ]
 METRICS = [
     {"key": "faithfulness", "label": "Faithfulness", "unit": "score", "direction": "higher"},
@@ -42,6 +48,7 @@ def new_record(run_id: str, source: str, recipe: str, scenario: str) -> dict:
         },
         "source_folder": source, "recipe": recipe,
         "data_card": None, "training": None, "evaluation": None,
+        "release": None,
         "decisions": {"registration": None, "deployment": None},
         "deployment": None, "audit": [],
     }
@@ -154,20 +161,99 @@ def evaluation_result(record: dict) -> dict:
     }
 
 
-def deployment_result(record: dict) -> dict:
+def candidate_release_result(record: dict, registration: dict) -> dict:
     run_id = record["run_id"]
     return {
-        "simulated": True, "endpoint_name": f"{run_id}-endpoint",
-        "endpoint_uri": f"demo://{run_id}/endpoints/online",
+        "simulated": True,
+        "status": "candidate_deployed_zero_traffic",
+        "release_id": f"{run_id}-release-v1",
+        "registered_model": {
+            "name": registration["model_name"],
+            "version": registration["version"],
+            "uri": f"demo://{run_id}/models/{registration['model_name']}/versions/1",
+        },
+        "endpoint": {
+            "name": f"{run_id}-endpoint",
+            "uri": f"demo://{run_id}/endpoints/online",
+            "deployment": "candidate-v1",
+            "traffic_percent": 0,
+        },
+        "offline_evidence": {
+            "candidate_id": record["evaluation"]["candidate_id"],
+            "test_split": record["evaluation"]["test_split"],
+            "data_fingerprint": record["evaluation"]["data_fingerprint"],
+            "gate_status": record["evaluation"]["gate"]["status"],
+        },
+        "approval": {
+            "actor": registration["actor"],
+            "reason": registration["reason"],
+            "approved_at": registration["decided_at"],
+            "override": registration["override"],
+        },
+        "drift_reference": {
+            "status": "created",
+            "uri": f"demo://{run_id}/monitoring/drift-reference.json",
+            "source": record["evaluation"]["test_split"],
+        },
+        "created_at": now(),
+    }
+
+
+def deployment_result(record: dict) -> dict:
+    run_id = record["run_id"]
+    traffic_percent = record["decisions"]["deployment"]["traffic_percent"]
+    release = record["release"]
+    return {
+        "simulated": True, "endpoint_name": release["endpoint"]["name"],
+        "endpoint_uri": release["endpoint"]["uri"],
         "candidate_id": record["training"]["candidate_id"],
         "registration": record["decisions"]["registration"]["model_name"],
         "job_uri": f"demo://{run_id}/jobs/deployment",
-        "evaluation": {"simulated": True, "status": "passed", "smoke_test_count": 12,
-                       "successful_responses": 12, "actual_requests_sent": 0},
-        "monitoring": {"simulated": True, "status": "healthy", "window": "illustrative 24h",
-                       "request_count": 1200, "error_rate": 0.002, "p95_latency_ms": 165,
-                       "drift_score": 0.03, "alerts": [],
-                       "uri": f"demo://{run_id}/monitoring"},
+        "deployment_gate": {
+            "simulated": True,
+            "status": "passed",
+            "sample_count": 36,
+            "actual_requests_sent": 0,
+            "policy": {
+                "min_token_f1": 0.70,
+                "max_mean_latency_ms": 20_000,
+                "max_p95_latency_ms": 40_000,
+            },
+            "values": {
+                "mean_token_f1": 0.91,
+                "mean_latency_ms": 132,
+                "p95_latency_ms": 165,
+            },
+        },
+        "evaluation": {
+            "simulated": True,
+            "status": "passed",
+            "smoke_test_count": 12,
+            "successful_responses": 12,
+            "actual_requests_sent": 0,
+        },
+        "traffic": {
+            "before": {"incumbent": 100, "candidate-v1": 0},
+            "after": {
+                "incumbent": 100 - traffic_percent,
+                "candidate-v1": traffic_percent,
+            },
+            "candidate_percent": traffic_percent,
+        },
+        "monitoring": {
+            "simulated": True,
+            "status": "configured",
+            "schedule": f"{run_id}-weekly-request-drift",
+            "reference_uri": release["drift_reference"]["uri"],
+            "production_uri": f"demo://{run_id}/monitoring/production-requests",
+            "psi_threshold": 0.2,
+            "request_count": 0,
+            "error_rate": 0.0,
+            "p95_latency_ms": 165,
+            "drift_score": 0.03,
+            "alerts": [],
+            "uri": f"demo://{run_id}/monitoring",
+        },
         "completed_at": now(),
     }
 
@@ -206,9 +292,13 @@ def seed_records() -> list[dict]:
                     "evidence_data_fingerprint": record["data_card"]["data_fingerprint"],
                     "evidence_test_split": record["evaluation"]["test_split"], "gate_status": "passed",
                 }
+                record["release"] = candidate_release_result(
+                    record, record["decisions"]["registration"]
+                )
                 record["decisions"]["deployment"] = {
                     "simulated": True, "actor": "local-demo-user", "decided_at": timestamp,
                     "candidate_id": record["training"]["candidate_id"], "confirmed": True,
+                    "traffic_percent": 10,
                 }
                 for stage in ["decision", "deployment"]:
                     record["stages"][stage].update(status="succeeded", progress=100,
@@ -224,6 +314,9 @@ def seed_records() -> list[dict]:
             event["timestamp"] = timestamp
         if record["evaluation"]:
             record["evaluation"]["completed_at"] = timestamp
+        if record["release"]:
+            record["release"]["created_at"] = timestamp
+            record["release"]["approval"]["approved_at"] = timestamp
         if record["deployment"]:
             record["deployment"]["completed_at"] = timestamp
         records.append(record)

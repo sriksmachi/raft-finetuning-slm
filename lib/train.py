@@ -41,6 +41,49 @@ log = logging.getLogger(__name__)
 # bf16 is preferred when the GPU supports it (e.g. A100/H100); fp16 otherwise.
 DTYPE = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 
+
+def training_profile(args: argparse.Namespace, bf16_supported: bool) -> dict[str, int | str]:
+    tokens_per_microbatch = args.batch_size * args.max_seq_length
+    return {
+        "precision": "bf16" if bf16_supported else "fp16",
+        "sequences_per_microbatch": args.batch_size,
+        "tokens_per_microbatch_upper_bound": tokens_per_microbatch,
+        "microbatches_per_optimizer_step": args.gradient_accumulation,
+        "sequences_per_optimizer_step": args.batch_size * args.gradient_accumulation,
+        "tokens_per_optimizer_step_upper_bound": (
+            tokens_per_microbatch * args.gradient_accumulation
+        ),
+    }
+
+
+def mlflow_parameters(
+    args: argparse.Namespace, profile: dict[str, int | str]
+) -> dict[str, object]:
+    parameters = vars(args).copy()
+    for name in ("base_model", "data", "hf_token_secret_name", "model_output"):
+        parameters.pop(name, None)
+    parameters.update({f"profile_{key}": value for key, value in profile.items()})
+    return parameters
+
+
+def log_mlflow_parameters(parameters: dict[str, object], run_id: str) -> None:
+    existing = mlflow.get_run(run_id).data.params
+    pending = {key: value for key, value in parameters.items() if key not in existing}
+    conflicts = {
+        key: (existing[key], str(value))
+        for key, value in parameters.items()
+        if key in existing and existing[key] != str(value)
+    }
+    if conflicts:
+        log.warning(
+            "Preserving %d existing MLflow parameter value(s) during job retry: %s",
+            len(conflicts),
+            sorted(conflicts),
+        )
+    if pending:
+        mlflow.log_params(pending)
+
+
 class ResponseOnlyDataCollator:
     """Pad causal-LM inputs and preserve response-only labels.
 
@@ -168,6 +211,12 @@ def main(args: argparse.Namespace) -> None:
         args.max_seq_length,
         args.lora_rank,
     )
+    profile = training_profile(args, torch.cuda.is_bf16_supported())
+    log.info("Hardware-aware training profile: %s", profile)
+    if profile["precision"] == "fp16":
+        log.warning(
+            "bf16 is unavailable on this GPU; using fp16. This is expected for T4-class GPUs."
+        )
     set_seed(args.seed)
     if bool(args.key_vault_name) != bool(args.hf_token_secret_name):
         raise ValueError("Provide both Key Vault name and Hugging Face secret name")
@@ -409,9 +458,7 @@ def main(args: argparse.Namespace) -> None:
 
     with mlflow.start_run() as run:
         log.info("Started MLflow run: %s", run.info.run_id)
-        logged_parameters = vars(args).copy()
-        logged_parameters.pop("hf_token_secret_name", None)
-        mlflow.log_params(logged_parameters)
+        log_mlflow_parameters(mlflow_parameters(args, profile), run.info.run_id)
         mlflow.set_tags(
             {
                 "task": "context-grounded-generation",

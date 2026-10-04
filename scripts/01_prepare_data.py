@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -52,6 +53,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-asset-name", default="slm-studio-instance-security")
     parser.add_argument("--data-asset-version",
                         default=datetime.now(timezone.utc).strftime("%Y%m%d.%H%M%S"))
+    parser.add_argument(
+        "--datastore",
+        help=(
+            "Azure ML datastore used to upload the data asset "
+            "(defaults to AZUREML_DATASTORE_NAME, then the workspace default)"
+        ),
+    )
     parser.add_argument("--description",
                         default="SLM Studio train/validation/test splits for instance-security grounded QA")
     parser.add_argument("--log-level", default="INFO")
@@ -102,12 +110,14 @@ def validate(dataset_dir: Path) -> None:
 
 def publish(args: argparse.Namespace) -> None:
     ml_client = AzureMLConfig.from_env().create_ml_client()
+    datastore = args.datastore or os.getenv("AZUREML_DATASTORE_NAME")
     asset = publish_data_asset(
         ml_client=ml_client,
         dataset_dir=args.dataset_dir,
         name=args.data_asset_name,
         version=args.data_asset_version,
         description=args.description,
+        datastore=datastore,
     )
     log.info("Published azureml:%s:%s", asset.name, asset.version)
     log.info("Storage URI: %s", asset.path)

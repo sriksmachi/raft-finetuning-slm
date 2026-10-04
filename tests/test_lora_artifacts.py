@@ -190,6 +190,85 @@ def test_training_checkpoints_are_not_exported():
                and node.func.id == "save_lora_adapter" for node in ast.walk(tree))
 
 
+@pytest.mark.parametrize(
+    "bf16_supported,precision",
+    [(False, "fp16"), (True, "bf16")],
+)
+def test_training_profile_reports_effective_batch_and_precision(
+    bf16_supported, precision
+):
+    args = SimpleNamespace(
+        batch_size=2,
+        max_seq_length=2048,
+        gradient_accumulation=16,
+    )
+    functions = _functions(
+        ROOT / "lib" / "train.py",
+        {"training_profile"},
+        {"argparse": SimpleNamespace(Namespace=object)},
+    )
+
+    profile = functions["training_profile"](args, bf16_supported)
+
+    assert profile == {
+        "precision": precision,
+        "sequences_per_microbatch": 2,
+        "tokens_per_microbatch_upper_bound": 4096,
+        "microbatches_per_optimizer_step": 16,
+        "sequences_per_optimizer_step": 32,
+        "tokens_per_optimizer_step_upper_bound": 65536,
+    }
+
+
+def test_mlflow_parameters_exclude_retry_specific_paths_and_secret_name():
+    args = SimpleNamespace(
+        base_model="/mnt/retry/base",
+        data="/mnt/retry/data",
+        model_output="/mnt/retry/output",
+        hf_token_secret_name="secret-name",
+        batch_size=2,
+        seed=42,
+    )
+    functions = _functions(
+        ROOT / "lib" / "train.py",
+        {"mlflow_parameters"},
+        {"argparse": SimpleNamespace(Namespace=object)},
+    )
+
+    parameters = functions["mlflow_parameters"](args, {"precision": "fp16"})
+
+    assert parameters == {
+        "batch_size": 2,
+        "seed": 42,
+        "profile_precision": "fp16",
+    }
+
+
+def test_mlflow_parameter_logging_is_retry_idempotent():
+    mlflow = SimpleNamespace(
+        get_run=Mock(
+            return_value=SimpleNamespace(
+                data=SimpleNamespace(params={"batch_size": "2", "seed": "7"})
+            )
+        ),
+        log_params=Mock(),
+    )
+    logger = Mock()
+    functions = _functions(
+        ROOT / "lib" / "train.py",
+        {"log_mlflow_parameters"},
+        {"mlflow": mlflow, "log": logger},
+    )
+
+    functions["log_mlflow_parameters"](
+        {"batch_size": 2, "seed": 42, "profile_precision": "fp16"},
+        "run-id",
+    )
+
+    mlflow.log_params.assert_called_once_with({"profile_precision": "fp16"})
+    logger.warning.assert_called_once()
+
+
 def test_adapter_tokenizer_preserves_training_template():
     tokenizer = SimpleNamespace(
         chat_template="saved-training-template", pad_token=None, eos_token="eos",

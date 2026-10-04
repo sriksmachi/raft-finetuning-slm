@@ -14,6 +14,7 @@ dependencies:
       - peft
       - sentencepiece
       - torch>=2.9,<2.10
+      - torchao==0.17.0
       - transformers==4.57.1
       - accelerate
       - azureml-fsspec>=1.0,<2

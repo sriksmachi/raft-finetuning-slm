@@ -12,22 +12,29 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.fixtures import (
-    METRICS, MODELS, STAGES, audit, data_card, deployment_result,
-    evaluation_result, new_record, now, training_result,
+    METRICS, MODELS, STAGES, audit, candidate_release_result, data_card,
+    deployment_result, evaluation_result, new_record, now, training_result,
 )
-from app.models import Action, Parameters, Preparation, Registration, Training
+from app.evaluation_showcase import load_evaluation_showcase
+from app.models import Action, Deployment, Parameters, Preparation, Registration, Training
 from app.store import DemoStore, StoreError, validate_id
 
 
 logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[1]
+EVALUATION_SHOWCASE_PATH = ROOT / "app" / "data" / "evaluation_showcase.json"
 MAX_ACTIVE_TASKS = 32
 
 
-def create_app(runs_dir: Path | None = None, stage_delay: float = 0.35) -> FastAPI:
+def create_app(
+    runs_dir: Path | None = None,
+    stage_delay: float = 0.35,
+    evaluation_showcase_path: Path = EVALUATION_SHOWCASE_PATH,
+) -> FastAPI:
     if not math.isfinite(stage_delay) or stage_delay < 0:
         raise ValueError("stage_delay must be finite and nonnegative")
     store = DemoStore(runs_dir if runs_dir is not None else ROOT / "runs" / "demo")
+    evaluation_showcase = load_evaluation_showcase(evaluation_showcase_path)
     locks: dict[str, asyncio.Lock] = {}
     tasks: set[asyncio.Task] = set()
 
@@ -81,8 +88,13 @@ def create_app(runs_dir: Path | None = None, stage_delay: float = 0.35) -> FastA
                             record["deployment"] = deployment_result(record)
                         record["stages"][stage].update(status="succeeded", completed_at=now())
                         record["status"] = "completed" if stage == "deployment" else "ready"
-                        if stage == "evaluation":
-                            record["current_stage"] = "decision"
+                        next_stage = {
+                            "data_preparation": "training",
+                            "training": "evaluation",
+                            "evaluation": "decision",
+                            "deployment": "deployment",
+                        }
+                        record["current_stage"] = next_stage[stage]
                         audit(record, f"{stage}_succeeded")
                     record["updated_at"] = now()
                     store.save(record)
@@ -146,7 +158,13 @@ def create_app(runs_dir: Path | None = None, stage_delay: float = 0.35) -> FastA
             raise HTTPException(400, "Production mode is unsupported. This standalone server only simulates demo actions.")
         return {"mode": "demo", "production_enabled": False, "simulated": True,
                 "models": MODELS, "recipes": ["context-grounded", "context-assisted"],
-                "metrics": METRICS, "stage_order": STAGES}
+                "metrics": METRICS, "stage_order": STAGES,
+                "wizard": {"sequential": True, "allow_completed_review": True,
+                           "production_actions": False}}
+
+    @application.get("/api/evaluation-showcase")
+    async def get_evaluation_showcase():
+        return evaluation_showcase
 
     @application.post("/api/mode")
     async def unsupported_mode():
@@ -300,9 +318,10 @@ def create_app(runs_dir: Path | None = None, stage_delay: float = 0.35) -> FastA
                 "evidence_test_split": evaluation["test_split"], "gate_status": evaluation["gate"]["status"],
             }
             record["decisions"]["registration"] = registration
+            record["release"] = candidate_release_result(record, registration)
             record["stages"]["decision"].update(status="succeeded", progress=100,
                                                  started_at=now(), completed_at=now())
-            record.update(status="ready", current_stage="decision", updated_at=now())
+            record.update(status="ready", current_stage="deployment", updated_at=now())
             audit(record, "registration_overridden" if blocked else "registration_approved",
                   actor=body.actor, reason=registration["reason"],
                   override=blocked, evidence_candidate_id=evaluation["candidate_id"])
@@ -310,8 +329,10 @@ def create_app(runs_dir: Path | None = None, stage_delay: float = 0.35) -> FastA
             return record
 
     @application.post("/api/runs/{run_id}/deployment")
-    async def deploy(run_id: str, body: Action):
+    async def deploy(run_id: str, body: Deployment):
         confirmed(body)
+        if not body.actor.strip():
+            raise HTTPException(422, "actor must not be blank.")
         async with lock_for(run_id):
             record = read(run_id)
             if record["stages"]["deployment"]["status"] in {"running", "succeeded"}:
@@ -320,14 +341,21 @@ def create_app(runs_dir: Path | None = None, stage_delay: float = 0.35) -> FastA
             registration = record["decisions"]["registration"]
             if not registration or registration.get("evidence_candidate_id") != record["training"]["candidate_id"]:
                 raise HTTPException(409, "Candidate-bound registration is required before deployment.")
+            release = record.get("release")
+            if (not isinstance(release, dict)
+                    or release.get("status") != "candidate_deployed_zero_traffic"
+                    or release.get("endpoint", {}).get("traffic_percent") != 0):
+                raise HTTPException(409, "An approved zero-traffic candidate release is required.")
             evidence(record)
             unfinished(record)
             capacity()
             record["decisions"]["deployment"] = {
-                "simulated": True, "actor": "local-demo-user", "decided_at": now(),
+                "simulated": True, "actor": body.actor, "decided_at": now(),
                 "confirmed": True, "candidate_id": record["training"]["candidate_id"],
+                "traffic_percent": body.traffic_percent,
             }
-            audit(record, "deployment_confirmed")
+            audit(record, "deployment_gate_confirmed", actor=body.actor,
+                  traffic_percent=body.traffic_percent)
             return start(record, "deployment")
 
     static = Path(__file__).resolve().parent / "static"

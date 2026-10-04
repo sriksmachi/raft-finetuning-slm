@@ -182,6 +182,55 @@ def test_inference_registration_does_not_replace_training_version(sdk):
     assert get_training_environment_version() == "8"
 
 
+def test_unsloth_environments_pin_torchao_for_torch_29() -> None:
+    root = Path(__file__).resolve().parents[1]
+    for name in ("train-conda.yml", "inference-conda.yml"):
+        environment = (root / "environments" / name).read_text(encoding="utf-8")
+        assert "torch>=2.9,<2.10" in environment
+        assert "torchao==0.17.0" in environment
+
+
+def test_cli_configures_utf8_console_streams() -> None:
+    stdout = Mock()
+    stderr = Mock()
+    functions = _functions(
+        ROOT / "scripts" / "02_azureml_fine_tuning.py",
+        {"configure_console_encoding"},
+        {"sys": SimpleNamespace(stdout=stdout, stderr=stderr)},
+    )
+
+    functions["configure_console_encoding"]()
+
+    stdout.reconfigure.assert_called_once_with(encoding="utf-8", errors="replace")
+    stderr.reconfigure.assert_called_once_with(encoding="utf-8", errors="replace")
+
+
+def test_job_status_lookup_retries_transient_credential_failure() -> None:
+    class CredentialUnavailableError(Exception):
+        pass
+
+    completed = SimpleNamespace(status="Completed")
+    client = SimpleNamespace(
+        jobs=SimpleNamespace(
+            get=Mock(side_effect=[CredentialUnavailableError(), completed])
+        )
+    )
+    sleep = Mock()
+    functions = _functions(
+        ROOT / "scripts" / "02_azureml_fine_tuning.py",
+        {"get_job_after_stream"},
+        {
+            "CredentialUnavailableError": CredentialUnavailableError,
+            "log": Mock(),
+            "time": SimpleNamespace(sleep=sleep),
+        },
+    )
+
+    assert functions["get_job_after_stream"](client, "job-name", delay=0.25) is completed
+    assert client.jobs.get.call_count == 2
+    sleep.assert_called_once_with(0.25)
+
+
 def test_persistence_failure_is_explicit(sdk, monkeypatch):
     import dotenv
 
@@ -211,6 +260,7 @@ def test_cli_can_reuse_saved_environment_without_registration(sdk):
         "logging": logging, "log": logging.getLogger("test"),
         "AzureMLConfig": SimpleNamespace(from_env=lambda: config),
         "register_environment": register, "submit_training": submit,
+        "configure_console_encoding": Mock(),
     })
     assert functions["main"]() == 0
     register.assert_not_called()

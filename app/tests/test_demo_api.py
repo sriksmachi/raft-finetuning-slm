@@ -93,6 +93,11 @@ def assert_shape(record):
             assert set(row["metrics"]) == {metric["key"] for metric in METRICS}
             for key in ("faithfulness", "accuracy", "relevancy"):
                 assert 0 <= row["metrics"][key] <= 1
+    if record.get("release"):
+        assert record["release"]["simulated"] is True
+        assert record["release"]["status"] == "candidate_deployed_zero_traffic"
+        assert record["release"]["endpoint"]["traffic_percent"] == 0
+        assert record["release"]["drift_reference"]["uri"].startswith("demo://")
 
 
 def test_config_and_production_disabled(studio):
@@ -101,11 +106,26 @@ def test_config_and_production_disabled(studio):
     assert config["mode"] == "demo" and config["production_enabled"] is False
     assert config["simulated"] is True
     assert config["stage_order"] == STAGES
+    assert config["wizard"] == {
+        "sequential": True, "allow_completed_review": True, "production_actions": False
+    }
     assert len(config["metrics"]) == 5
     units = {metric["key"]: metric["unit"] for metric in config["metrics"]}
     assert units["latency"] == "ms"
     assert units["token_cost"] == "USD"
     models = {model["id"] for model in config["models"]}
+    assert models == {
+        "demo-phi-3-mini",
+        "demo-phi-4-mini",
+        "demo-llama-3.2-1b",
+        "demo-llama-3.2-3b",
+        "demo-qwen-2.5-1.5b",
+        "demo-qwen-2.5-3b",
+        "demo-ministral-3b",
+        "demo-mistral-7b-instruct",
+    }
+    for model in models:
+        assert Parameters(base_model=model).base_model == model
     for record in client.get("/api/runs").json()["runs"]:
         assert record["training"]["config"]["base_model"] in models
     assert client.get("/api/config?mode=production").status_code == 400
@@ -114,6 +134,14 @@ def test_config_and_production_disabled(studio):
         "mode": "production", "source_folder": "demo", "recipe": "context-grounded",
         "confirmed": True,
     }).status_code == 422
+
+
+def test_header_presents_product_tagline():
+    html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    assert (
+        "Cut token costs with task-aligned open models—fine-tune, compare, "
+        "and deploy in minutes."
+    ) in html
 
 
 def test_isolation_and_no_source_reads(studio, tmp_path, monkeypatch):
@@ -262,15 +290,27 @@ def test_full_workflow(studio):
     assert result.status_code == 200, result.text
     registered = result.json()
     assert registered["deployment"] is None
+    assert registered["current_stage"] == "deployment"
+    assert registered["release"]["status"] == "candidate_deployed_zero_traffic"
+    assert registered["release"]["endpoint"]["traffic_percent"] == 0
+    assert registered["release"]["drift_reference"]["status"] == "created"
     registration = registered["decisions"]["registration"]
     assert registration["evidence_candidate_id"] == record["training"]["candidate_id"]
     assert registration["actor"] == "local-demo-user"
-    response = client.post(f"/api/runs/{run_id}/deployment", json={"confirmed": True})
+    response = client.post(f"/api/runs/{run_id}/deployment", json={
+        "confirmed": True, "actor": "release-operator", "traffic_percent": 25,
+    })
     assert response.status_code == 200
     final = wait(client, run_id, "deployment")
     assert final["status"] == "completed"
     assert final["deployment"]["endpoint_uri"].startswith("demo://")
-    assert final["deployment"]["evaluation"]["actual_requests_sent"] == 0
+    assert final["deployment"]["deployment_gate"]["status"] == "passed"
+    assert final["deployment"]["deployment_gate"]["actual_requests_sent"] == 0
+    assert final["deployment"]["traffic"]["candidate_percent"] == 25
+    assert final["deployment"]["traffic"]["after"] == {"incumbent": 75, "candidate-v1": 25}
+    assert final["deployment"]["monitoring"]["reference_uri"] == \
+        final["release"]["drift_reference"]["uri"]
+    assert final["decisions"]["deployment"]["actor"] == "release-operator"
     assert all(stage["status"] == "succeeded" for stage in final["stages"].values())
     assert_shape(final)
     assert store.read(run_id) == final
@@ -305,6 +345,60 @@ def test_override_audit_and_idempotent_registration(studio):
     assert sum(event["action"] == "registration_overridden" for event in record["audit"]) == 1
     assert client.post("/api/runs/demo-blocked/deployment", json={"confirmed": True}).status_code == 200
     assert wait(client, "demo-blocked", "deployment")["status"] == "completed"
+
+
+@pytest.mark.parametrize("body", [
+    {"confirmed": True, "traffic_percent": 0},
+    {"confirmed": True, "traffic_percent": 101},
+    {"confirmed": True, "traffic_percent": 10, "actor": "   "},
+])
+def test_deployment_gate_input_validation(studio, body):
+    client, _ = studio
+    # Input validation runs before completed-action idempotency.
+    assert client.post("/api/runs/demo-completed/deployment", json=body).status_code == 422
+
+
+def test_deployment_requires_zero_traffic_release(studio):
+    client, store = studio
+    record = store.read("demo-blocked")
+    record["decisions"]["registration"] = {
+        "simulated": True, "model_name": "legacy-model", "version": "1",
+        "override": True, "reason": "legacy", "actor": "legacy-user",
+        "decided_at": record["updated_at"],
+        "evidence_candidate_id": record["training"]["candidate_id"],
+        "evidence_data_fingerprint": record["evaluation"]["data_fingerprint"],
+        "evidence_test_split": record["evaluation"]["test_split"],
+        "gate_status": "blocked",
+    }
+    record["stages"]["decision"].update(status="succeeded", progress=100)
+    record["release"] = {"status": "candidate_deployed_zero_traffic",
+                         "endpoint": {"traffic_percent": 10}}
+    store.save(record)
+    response = client.post("/api/runs/demo-blocked/deployment", json={"confirmed": True})
+    assert response.status_code == 409
+    assert "zero-traffic" in response.json()["detail"]
+
+
+def test_legacy_registration_derives_release_without_rewriting(studio):
+    _, store = studio
+    path = store.path("demo-blocked")
+    record = store.read("demo-blocked")
+    record["decisions"]["registration"] = {
+        "simulated": True, "model_name": "legacy-model", "version": "1",
+        "override": True, "reason": "legacy approval", "actor": "legacy-user",
+        "decided_at": record["updated_at"],
+        "evidence_candidate_id": record["training"]["candidate_id"],
+        "evidence_data_fingerprint": record["evaluation"]["data_fingerprint"],
+        "evidence_test_split": record["evaluation"]["test_split"],
+        "gate_status": "blocked",
+    }
+    record["release"] = None
+    store.save(record)
+    before = path.read_text(encoding="utf-8")
+    migrated = store.read("demo-blocked")
+    assert migrated["release"]["endpoint"]["traffic_percent"] == 0
+    assert migrated["release"]["approval"]["actor"] == "legacy-user"
+    assert path.read_text(encoding="utf-8") == before
 
 
 @pytest.mark.parametrize("damage", [
@@ -498,13 +592,36 @@ def test_static_mount_contract(studio):
     assert any(getattr(route, "path", None) == "/static" for route in client.app.routes)
 
 
+def test_evaluation_showcase_exposes_real_read_only_evidence(studio):
+    client, _ = studio
+    response = client.get("/api/evaluation-showcase")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["sample_count"] == len(payload["records"])
+    assert payload["summary"]["sample_count"] > 0
+    assert set(payload["summary"]["models"]) == {"oob", "fine_tuned", "gpt"}
+    assert payload["summary"]["evaluation_run_id"]
+    record = payload["records"][0]
+    assert {"id", "type", "query", "cot_answer", "answers"} <= set(record)
+    assert set(record["answers"]) == {"oob", "fine_tuned", "gpt"}
+    for answer in record["answers"].values():
+        assert {"text", "latency_ms", "scores"} <= set(answer)
+        assert set(answer["scores"]) == {"faithfulness", "relevancy", "correctness"}
+
+
 def test_ui_uses_one_banner_and_production_style_actions(studio):
     client, _ = studio
     html = client.get("/").text
     assert html.count("Demo only. No Azure services are called.") == 1
     for label in ("Prepare data", "Suggest parameters", "Start training",
-                  "Run evaluation", "Register candidate", "Deploy model"):
+                  "Run evaluation", "Approve &amp; release candidate",
+                  "Run gate &amp; route traffic"):
         assert label in html
+    for marker in ("wizard-status", "wizard-back", "wizard-next",
+                   "Candidate traffic", "zero-traffic candidate",
+                   "Response-level model comparison", "evidence-search",
+                   "CoT answer", "Fine-tuned SLM answer"):
+        assert marker in html
     for label in ("SIMULATED", "Simulate training", "demo fixtures",
                   "Create demo run", "Register demo candidate"):
         assert label not in html

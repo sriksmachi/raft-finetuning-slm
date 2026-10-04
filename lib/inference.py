@@ -150,7 +150,7 @@ def parse_args():
     )
     parser.add_argument(
         "--hf-token",
-        required=True,
+        default="",
     )
     parser.add_argument(
         "--storage-account-name",
@@ -405,7 +405,7 @@ def call_gpt_with_retry(
                 model=deployment,
                 messages=messages,
                 temperature=0,
-                max_tokens=max_new_tokens,
+                max_completion_tokens=max_new_tokens,
                 **({"response_format": response_format} if response_format else {}),
             )
             choice = response.choices[0]

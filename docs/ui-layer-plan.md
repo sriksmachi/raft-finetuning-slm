@@ -1,9 +1,16 @@
 # SLM Studio - GitHub Copilot Product Spec
 
-**Status:** Draft; implementation not started.
+**Status:** Demo-only five-stage wizard implemented; production adapter not started.
 **Purpose:** A living product spec for incremental implementation with GitHub Copilot (GHCP).
 **Scope:** Product requirements and acceptance criteria only; this document does not authorize implementation.
 **Inspiration:** [ideaweaver-ai/ideaweaver-slm-builder](https://github.com/ideaweaver-ai/ideaweaver-slm-builder). SLM Studio deliberately avoids rebuilding Azure dashboards.
+
+IdeaWeaver's from-scratch TinyStories model is a UX reference, not a compatible
+training recipe for this pretrained Llama RAFT pipeline. SLM Studio preserves
+its 4-bit rsLoRA architecture, pretrained tokenizer and chat template,
+response-only grounded supervision, validation, and reproducible seed. It
+adopts only compatible presentation concepts such as hardware-aware precision
+guidance and explicit microbatch/effective-token accounting.
 
 ## 1. Goals and boundaries
 
@@ -27,7 +34,8 @@ Planning assumption: the five-stage workflow is the target product; the earlier 
 
 ## 2. Functional features
 
-All features below are **planned**, not claims about current repository capabilities.
+The isolated demo behavior is implemented for the five-stage wizard. Production
+behavior in the table remains planned and is not enabled by this implementation.
 
 | ID | Feature | Required behavior / acceptance |
 |---|---|---|
@@ -37,8 +45,8 @@ All features below are **planned**, not claims about current repository capabili
 | F-04 | Training submission | Confirm the selected data, model, parameters, and GPU cost implications before training. Persist the submitted Azure ML job identity and configuration. Demo shows simulated progress; production shows coarse stage status and Azure links, not training telemetry. |
 | F-05 | Model evaluation | Default to the latest applicable training run, with explicit run selection available. Evaluate the saved fine-tuned artifact, the original base SLM, and the GPT baseline on the same sealed test records. Show the five metrics defined in Section 5 and persist the evidence. |
 | F-06 | Gate and recommendation | Show passed, blocked, or pending evidence status with actual comparison values. Use scores as context for a meta-prompt that recommends deployment readiness and explains its reasoning. An LLM recommendation cannot change the deterministic registration gate. |
-| F-07 | Register and override | Allow registration when the gate passes. A blocked gate requires a deliberate override with typed confirmation and a recorded reason. Record actor, time, candidate, and evidence. Registration and deployment are separate actions. |
-| F-08 | Deployment and monitoring | After user confirmation, orchestrate the governed candidate release and deployment gate in `scripts/04_release_candidate.py` and `scripts/05_deployment_gate.py`. Show resulting resource links and outcome; use Azure-native monitoring rather than build dashboards. |
+| F-07 | Register and override | Allow candidate release when the gate passes. A blocked gate requires a deliberate override with typed confirmation and a recorded reason. Record actor, time, candidate, and evidence. Stage 04 registers the candidate, deploys it at zero traffic, and creates the drift reference. |
+| F-08 | Deployment and monitoring | After separate user confirmation, run the deployment gate, configure drift monitoring, and route the selected canary or full traffic percentage. Production will orchestrate `scripts/04_release_candidate.py` and `scripts/05_deployment_gate.py`; the demo performs no live calls. |
 
 ## 3. Technical features
 
@@ -74,8 +82,8 @@ These are logical screens or sections, not a requirement for separate pages. A s
 | Data preparation | Folder and generation-recipe selection, billable-action confirmation, validation outcome, and data card. |
 | Fine-tuning | Data summary, Foundry model selection, suggested editable parameters, Train confirmation, and job link. |
 | Evaluation | Candidate and baseline identities, Evaluate action, five-metric comparison table, and evidence status. |
-| Decision | Gate status, actual values, readiness recommendation, Register action, explicit override flow, and separate deployment confirmation. |
-| Deployment / monitoring | Deployment outcome, evaluation/monitoring setup outcomes, and links to Azure-native views. |
+| Candidate release | Offline gate status, actual values, readiness recommendation, approval/override flow, registration receipt, zero-traffic endpoint, and drift reference. |
+| Deployment gate | Endpoint gate evidence, operator confirmation, selected traffic percentage, resulting traffic map, and drift-monitoring schedule. |omes, and links to Azure-native views. |
 
 UI rules: clearly distinguish pending, failed, simulated, passed, and blocked states. Never show a recommendation or successful submission as a completed deployment. Do not add dashboard infrastructure to display these summaries.
 

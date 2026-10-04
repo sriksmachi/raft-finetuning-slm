@@ -166,25 +166,22 @@ def resolve_hf_token(args: argparse.Namespace) -> str:
     return secret_client.get_secret(hf_token_secret_name).value
 
 
-def print_job_metrics(config: AzureMLConfig, ml_client, experiment_name: str, job_name: str) -> None:
+def print_job_metrics(config: AzureMLConfig, ml_client, job_name: str) -> None:
     import mlflow
 
     workspace = ml_client.workspaces.get(config.workspace_name)
     mlflow.set_tracking_uri(workspace.mlflow_tracking_uri)
-    runs = mlflow.search_runs(
-        experiment_names=[experiment_name],
-        filter_string=f"tags.mlflow.runName LIKE '%{job_name}%'",
-        max_results=5,
-        order_by=["start_time DESC"],
-    )
-    if runs.empty:
+    run = mlflow.get_run(job_name)
+    if not run.data.metrics:
         log.warning("No MLflow run found yet for job %s", job_name)
         return
-    metric_columns = sorted(c for c in runs.columns if c.startswith("metrics."))
+    metrics = "\n".join(
+        f"{name}: {value}" for name, value in sorted(run.data.metrics.items())
+    )
     log.info(
         "Metrics logged for job %s (OOB, fine-tuned SLM, GPT: RAG scores and latency):\n%s",
         job_name,
-        runs[metric_columns].head(1).T.to_string(),
+        metrics,
     )
 
 
@@ -202,7 +199,8 @@ def main() -> int:
     logging.getLogger("azure").setLevel(logging.WARNING)
 
     config = AzureMLConfig.from_env()
-    ml_client = config.create_ml_client()
+    credential = config.create_credential()
+    ml_client = config.create_ml_client(credential=credential)
     test_data_asset = ml_client.data.get(
         args.test_data_asset_name, version=args.test_data_asset_version
     )
@@ -273,6 +271,7 @@ def main() -> int:
         max_records=args.max_records,
         sample_records=args.sample_records,
         hf_token=hf_token,
+        credential=credential,
     )
     log.info("Job name: %s", submitted_job.name)
     record_run(
@@ -285,7 +284,7 @@ def main() -> int:
     if args.wait:
         log.info("Waiting for job %s to complete...", submitted_job.name)
         ml_client.jobs.stream(submitted_job.name)
-        print_job_metrics(config, ml_client, args.experiment_name, submitted_job.name)
+        print_job_metrics(config, ml_client, submitted_job.name)
     else:
         log.info(
             "Job submitted asynchronously. Per-model RAG scores/reasons will be saved "

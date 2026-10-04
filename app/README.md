@@ -1,9 +1,13 @@
 # SLM Studio demo
 
-A standalone demo of the five-stage product workflow. **No pipeline imports,
-Azure connections, GPT calls, training, uploads, or live deployments occur.**
+A standalone wizard demo of the five-stage product workflow. **No pipeline imports,
+Azure connections, GPT calls, training, uploads, or live deployments occur at
+application runtime.** The Evaluation tab also includes a read-only snapshot from
+a completed Azure evaluation run; it never connects back to Azure.
 Production mode is visible but unavailable. Recipe choices and parameter
 recommendations are illustrative fixtures, not implemented algorithms or LLM output.
+The base-model selector includes simulated Llama, Qwen, Phi, and Mistral family
+options; choosing one does not download or invoke that model.
 
 ## Run locally
 
@@ -20,6 +24,8 @@ multi-user authentication. Do not expose it publicly.
 ## Explore the demo
 
 - Select a completed passing run, a blocked candidate, or a training failure.
+  Future steps stay locked until their prerequisite succeeds; completed steps
+  remain available for review with Back and Next navigation.
 - Choose **New run**, a source-folder label, and a recipe. Optional
   **Example workflow options** select a scenario.
   Folder labels are never read from disk.
@@ -27,9 +33,16 @@ multi-user authentication. Do not expose it publicly.
   training and evaluation. Progress is a timer, not a loss chart.
 - Inspect the five-metric comparison and the separate registration gate.
   All three models use the same fictional sealed test split.
+- Explore the real Azure evaluation snapshot: summary faithfulness, relevancy,
+  correctness, mean latency, and p95 latency appear above a searchable/filterable
+  grid of queries, reference CoT answers, GPT answers, original-model answers,
+  and fine-tuned answers.
 - A blocked gate requires **OVERRIDE** and a reason. Pending or failed evidence
   cannot be overridden.
-- Register first, then explicitly confirm simulated deployment and monitoring.
+- Approve the candidate release to simulate model registration, zero-traffic
+  endpoint deployment, and drift-reference creation.
+- Run the separate deployment gate, select a canary or full traffic percentage,
+  and review the resulting traffic map and drift-monitoring schedule.
 - Expand **Inspect the complete run record** to see the full evidence
   and decision audit. Optional JSON downloads are browser-generated copies.
 
@@ -53,11 +66,15 @@ These are display labels for the existing `context-grounded` and
 Rich YAML records live only in [runs/demo/](../runs/demo/). Each record carries
 `mode: demo`, `simulated: true`, workflow state, data-card metadata,
 training configuration, candidate/test lineage, three-model evaluation,
-gate evidence, recommendations, user decisions, deployment outcomes, and audit.
+offline gate evidence, release receipts, deployment-gate evidence, traffic
+decisions, monitoring configuration, recommendations, and audit.
 
 The app does not use the training run registry or scan production records.
 Fake resource references use `demo://` and are not live Azure links.
-Metrics and costs are explicitly simulated. Missing evidence is not a zero score.
+Workflow metrics and costs are explicitly simulated. The separate Azure evaluation
+showcase is generated from a hash-verified predictions CSV by
+`scripts/export_evaluation_showcase.py` and served read-only from
+`app/data/evaluation_showcase.json`. Missing evidence is not a zero score.
 Operations retain their state after refresh; interrupted operations are reported
 as interrupted/failed on restart rather than silently marked successful.
 

@@ -32,9 +32,11 @@ import argparse
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from azure.identity import CredentialUnavailableError
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +51,29 @@ from lib.config import AzureMLConfig
 from lib.run_registry import record_run
 
 log = logging.getLogger("azureml_fine_tuning")
+
+
+def configure_console_encoding() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
+def get_job_after_stream(ml_client, job_name: str, attempts: int = 3, delay: float = 5.0):
+    for attempt in range(1, attempts + 1):
+        try:
+            return ml_client.jobs.get(job_name)
+        except CredentialUnavailableError:
+            if attempt == attempts:
+                raise
+            log.warning(
+                "Azure credential refresh failed after log streaming; retrying status lookup (%d/%d)",
+                attempt,
+                attempts,
+            )
+            time.sleep(delay)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -185,6 +210,7 @@ def submit_training(ml_client, args: argparse.Namespace, environment_id: str):
 
 
 def main() -> int:
+    configure_console_encoding()
     # Load .env before parse_args() so argparse defaults sourced from the
     # environment (e.g. --compute-name) see .env's values, not just whatever
     # the shell already exported.
@@ -219,7 +245,7 @@ def main() -> int:
     if args.wait:
         log.info("Waiting for job %s to complete...", submitted_job.name)
         ml_client.jobs.stream(submitted_job.name)
-        completed_job = ml_client.jobs.get(submitted_job.name)
+        completed_job = get_job_after_stream(ml_client, submitted_job.name)
         if completed_job.status != "Completed":
             raise RuntimeError(f"Training did not complete successfully: {completed_job.status}")
         record_run(submitted_job.name, status="completed")

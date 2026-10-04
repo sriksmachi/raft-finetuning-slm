@@ -376,9 +376,13 @@ def submit_inference_evaluation_job(
             f"Training job {finetuning_job_name!r} is {completed_training_job.status!r}, "
             "not 'Completed'; cannot mount its model output yet."
         )
+    output_datastore = ml_client.datastores.get_default().name
     fine_tuned_model_argument = Input(
-        type=AssetTypes.CUSTOM_MODEL,
-        path=f"azureml://jobs/{finetuning_job_name}/outputs/model",
+        type=AssetTypes.URI_FOLDER,
+        path=(
+            f"azureml://datastores/{output_datastore}/paths/"
+            f"azureml/{finetuning_job_name}/model/"
+        ),
         mode=InputOutputModes.DOWNLOAD,
     )
 
@@ -418,10 +422,13 @@ def submit_inference_evaluation_job(
         ),
         "base_model": base_model_argument,
         "fine_tuned_model": fine_tuned_model_argument,
-        # Plain string input: lib/inference.py reads --hf-token as a
-        # literal value, not via its own Key Vault lookup (unlike train.py).
-        "hf_token": hf_token,
     }
+    hf_token_argument = ""
+    if hf_token:
+        # Plain string input: lib/inference.py reads --hf-token as a literal
+        # value, not via its own Key Vault lookup (unlike train.py).
+        inputs["hf_token"] = hf_token
+        hf_token_argument = " --hf-token ${{inputs.hf_token}}"
 
     job = command(
         # lib/inference.py uses `from data import read_jsonl` (a bare
@@ -437,8 +444,8 @@ def submit_inference_evaluation_job(
             "--output ${{outputs.predictions}} "
             f"--storage-account-name {storage_account_name} "
             f"--azure-client-id {managed_identity_client_id} "
-            f"--mode {mode} "
-            "--hf-token ${{inputs.hf_token}}"
+            f"--mode {mode}"
+            + hf_token_argument
             + optional_arguments
         ),
         inputs=inputs,

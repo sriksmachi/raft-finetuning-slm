@@ -3,14 +3,15 @@ const stageLabels = {
   data_preparation: "Data",
   training: "Fine-tuning",
   evaluation: "Evaluation",
-  decision: "Decision",
-  deployment: "Deployment",
+  decision: "Candidate release",
+  deployment: "Deployment gate",
 };
 const recipeLabels = {
   "context-grounded": "Context-grounded (RAFT)",
   "context-assisted": "Context-assisted (RAG)",
 };
 let config;
+let evaluationShowcase;
 let runs = [];
 let selected;
 let tab = "data_preparation";
@@ -74,6 +75,35 @@ function running() {
   return Object.values(selected?.stages ?? {}).some((stage) => stage.status === "running");
 }
 
+function unlockedStageIndex(run = selected) {
+  if (!run || !config) return 0;
+  let unlocked = 0;
+  for (let index = 0; index < config.stage_order.length - 1; index += 1) {
+    const stage = config.stage_order[index];
+    if (run.stages[stage].status !== "succeeded") break;
+    unlocked = index + 1;
+  }
+  return unlocked;
+}
+
+function canOpenStage(name) {
+  return config.stage_order.indexOf(name) <= unlockedStageIndex();
+}
+
+function updateWizardNavigation() {
+  if (!selected || !config) return;
+  const index = config.stage_order.indexOf(tab);
+  const unlocked = unlockedStageIndex();
+  $("wizard-back").disabled = index <= 0 || busy;
+  $("wizard-next").disabled = index < 0 || index >= unlocked
+    || index >= config.stage_order.length - 1 || busy;
+  $("wizard-position").textContent = `Step ${index + 1} of ${config.stage_order.length}`;
+  const nextRequired = config.stage_order[unlocked];
+  $("wizard-status").textContent = selected.status === "completed"
+    ? "Workflow complete. Review any completed step."
+    : `Current required step: ${stageLabels[nextRequired]}. Future steps unlock in order.`;
+}
+
 function summary(target, heading, entries) {
   const card = element("div", undefined, "summary-card");
   card.append(element("h3", heading));
@@ -92,6 +122,7 @@ function badge(text) {
 
 function setTab(name) {
   if (!config) return;
+  if (selected && !canOpenStage(name)) return;
   tab = name;
   for (const stage of config.stage_order) {
     $(`panel-${stage}`).hidden = stage !== tab;
@@ -102,6 +133,7 @@ function setTab(name) {
     if (active) button.setAttribute("aria-current", "step");
     else button.removeAttribute("aria-current");
   }
+  updateWizardNavigation();
 }
 
 function renderRuns() {
@@ -157,6 +189,82 @@ function renderMetrics(evaluation) {
     "SLM costs use a per-response compute allocation; GPT costs use token pricing.", "hint"));
 }
 
+function scoreText(value) {
+  return value == null ? "Not scored" : `${(Number(value) * 100).toFixed(1)}%`;
+}
+
+function answerCell(answer) {
+  const cell = element("td", undefined, "evidence-answer");
+  cell.append(element("p", answer.text || "No response"));
+  cell.append(element(
+    "small",
+    `Correctness ${scoreText(answer.scores.correctness)} · Faithfulness ${scoreText(answer.scores.faithfulness)} · Relevancy ${scoreText(answer.scores.relevancy)} · ${Number(answer.latency_ms).toFixed(0)} ms`,
+  ));
+  return cell;
+}
+
+function renderEvidenceRows() {
+  if (!evaluationShowcase) return;
+  const search = $("evidence-search").value.trim().toLowerCase();
+  const type = $("evidence-type").value;
+  const comparison = $("evidence-comparison").value;
+  const records = evaluationShowcase.records.filter((record) => {
+    if (type && record.type !== type) return false;
+    const fineTuned = record.answers.fine_tuned.scores.correctness;
+    const original = record.answers.oob.scores.correctness;
+    const gpt = record.answers.gpt.scores.correctness;
+    if (comparison === "fine_tuned_better" && !(fineTuned > original)) return false;
+    if (comparison === "gpt_better" && !(gpt > fineTuned)) return false;
+    if (comparison === "ties" && !(fineTuned === original && original === gpt)) return false;
+    if (!search) return true;
+    return [
+      record.query, record.cot_answer, record.answers.gpt.text,
+      record.answers.oob.text, record.answers.fine_tuned.text,
+    ].some((value) => String(value).toLowerCase().includes(search));
+  });
+
+  $("evidence-rows").replaceChildren();
+  for (const record of records) {
+    const row = element("tr");
+    const query = element("td", undefined, "evidence-query");
+    query.append(element("strong", record.query), element("small", `${record.id} · ${record.type}`));
+    row.append(query, element("td", record.cot_answer, "evidence-answer"));
+    row.append(
+      answerCell(record.answers.gpt),
+      answerCell(record.answers.oob),
+      answerCell(record.answers.fine_tuned),
+    );
+    $("evidence-rows").append(row);
+  }
+  $("evidence-count").textContent =
+    `Showing ${records.length} of ${evaluationShowcase.summary.sample_count} sealed-test records.`;
+}
+
+function renderEvaluationShowcase() {
+  $("showcase-metrics").replaceChildren();
+  const summaryData = evaluationShowcase.summary;
+  for (const key of ["fine_tuned", "oob", "gpt"]) {
+    const model = summaryData.models[key];
+    const card = element("article", undefined, "metric-card");
+    card.append(element("h4", model.label));
+    const list = element("dl");
+    for (const [label, value] of [
+      ["Faithfulness", scoreText(model.scores.faithfulness)],
+      ["Relevancy", scoreText(model.scores.relevancy)],
+      ["Correctness", scoreText(model.scores.correctness)],
+      ["Mean latency", `${Number(model.latency_avg_ms).toFixed(0)} ms`],
+      ["P95 latency", `${Number(model.latency_p95_ms).toFixed(0)} ms`],
+    ]) {
+      list.append(element("dt", label), element("dd", value));
+    }
+    card.append(list);
+    $("showcase-metrics").append(card);
+  }
+  $("evaluation-showcase-title").textContent =
+    `Response-level model comparison · ${summaryData.sample_count} records`;
+  renderEvidenceRows();
+}
+
 function renderSelected() {
   if (!selected || !config) return;
   const run = selected;
@@ -168,11 +276,18 @@ function renderSelected() {
   $("stage-nav").replaceChildren();
   config.stage_order.forEach((name, index) => {
     const state = run.stages[name];
+    const unlocked = index <= unlockedStageIndex(run);
     const button = element("button", undefined, "stage-step");
     button.type = "button";
     button.dataset.stage = name;
-    button.append(element("strong", `${index + 1}. ${stageLabels[name]}`), element("span", state.status.replaceAll("_", " ")));
-    button.addEventListener("click", () => setTab(name));
+    button.disabled = !unlocked;
+    button.classList.toggle("locked", !unlocked);
+    button.classList.toggle("succeeded", state.status === "succeeded");
+    button.append(
+      element("strong", `${index + 1}. ${stageLabels[name]}`),
+      element("span", unlocked ? state.status.replaceAll("_", " ") : "locked"),
+    );
+    if (unlocked) button.addEventListener("click", () => setTab(name));
     $("stage-nav").append(button);
   });
   const active = config.stage_order.find((name) => run.stages[name].status === "running");
@@ -238,7 +353,7 @@ function renderSelected() {
   }
   const registration = run.decisions.registration;
   if (registration) {
-    summary("decision-summary", "Registration decision", [
+    summary("decision-summary", "Candidate release approval", [
       ["Model", `${referenceLabel(registration.model_name)}:${registration.version}`],
       ["Approver", registration.actor === "local-demo-user" ? "local-user" : registration.actor],
       ["Override", registration.override ? "Yes" : "No"],
@@ -246,19 +361,42 @@ function renderSelected() {
       ["Decision time", registration.decided_at],
     ]);
   }
+  if (run.release) {
+    summary("decision-summary", "Zero-traffic candidate", [
+      ["Release", referenceLabel(run.release.release_id)],
+      ["Status", workflowText(run.release.status).replaceAll("_", " ")],
+      ["Endpoint", referenceLabel(run.release.endpoint?.uri)],
+      ["Deployment", run.release.endpoint?.deployment],
+      ["Traffic", `${run.release.endpoint?.traffic_percent}%`],
+      ["Drift reference", referenceLabel(run.release.drift_reference?.uri)],
+    ]);
+  }
   if (run.deployment) {
-    summary("deployment-summary", "Deployment outcome", [
+    const gate = run.deployment.deployment_gate;
+    if (gate) {
+      summary("deployment-summary", "Live deployment evidence", [
+        ["Gate", gate.status.toUpperCase()],
+        ["Sealed examples", gate.sample_count],
+        ["Mean token-F1", `${(gate.values.mean_token_f1 * 100).toFixed(1)}%`],
+        ["Mean latency", `${gate.values.mean_latency_ms} ms`],
+        ["P95 latency", `${gate.values.p95_latency_ms} ms`],
+      ]);
+    }
+    summary("deployment-summary", "Traffic and monitoring outcome", [
       ["Endpoint", referenceLabel(run.deployment.endpoint_name)],
-      ["Endpoint reference", referenceLabel(run.deployment.endpoint_uri)],
+      ["Candidate traffic", run.deployment.traffic
+        ? `${run.deployment.traffic.candidate_percent}%`
+        : "Completed"],
       ["Health", run.deployment.monitoring.status],
-      ["Requests", run.deployment.monitoring.request_count],
-      ["Error rate", `${(run.deployment.monitoring.error_rate * 100).toFixed(2)}%`],
-      ["P95 latency", `${run.deployment.monitoring.p95_latency_ms} ms`],
-      ["Drift score", run.deployment.monitoring.drift_score],
+      ["Drift schedule", run.deployment.monitoring.schedule ?? "Configured"],
+      ["PSI threshold", run.deployment.monitoring.psi_threshold ?? "0.2"],
+      ["Monitoring reference", referenceLabel(run.deployment.monitoring.reference_uri)],
     ]);
   } else {
     $("deployment-summary").append(element("p",
-      registration ? "Candidate registered. Deployment still needs your confirmation." : "Register a candidate before deployment.", "hint"));
+      run.release
+        ? "The candidate has zero traffic. Run the deployment gate before routing requests."
+        : "Complete the approved candidate release before the deployment gate.", "hint"));
   }
   const locked = busy || running() || run.status === "failed";
   $("train").disabled = locked || !stageSucceeded("data_preparation") || stageSucceeded("training");
@@ -296,8 +434,15 @@ async function refresh() {
   try {
     const result = await api("/api/runs");
     if (version !== selectionVersion) return;
+    const previous = selected;
     runs = result.runs;
     if (selected) selected = runs.find((run) => run.run_id === selected.run_id);
+    if (previous && selected) {
+      const completedRunningStage = config.stage_order.find((name) =>
+        previous.stages[name].status === "running"
+        && selected.stages[name].status === "succeeded");
+      if (completedRunningStage) tab = selected.current_stage;
+    }
     if (!selected && runs.length) {
       selected = runs[0];
       tab = selected.current_stage;
@@ -394,7 +539,11 @@ bindForm("register-form", "register", (form) => ({
   confirmation: field(form, "confirmation").value,
   reason: field(form, "reason").value.trim(),
 }), "decision");
-bindForm("deployment-form", "deployment", (form) => ({ confirmed: field(form, "confirmed").checked }), "deployment");
+bindForm("deployment-form", "deployment", (form) => ({
+  confirmed: field(form, "confirmed").checked,
+  actor: field(form, "actor").value.trim(),
+  traffic_percent: Number(field(form, "traffic_percent").value),
+}), "deployment");
 $("suggest").addEventListener("click", () => action(async () => {
   const result = await api(`/api/runs/${encodeURIComponent(selected.run_id)}/training/suggestions`, {});
   prefill(result.parameters);
@@ -406,6 +555,14 @@ $("new-run").addEventListener("click", () => {
 });
 $("refresh").addEventListener("click", () => action(refresh));
 $("run-select").addEventListener("change", (event) => selectRun(event.target.value));
+$("wizard-back").addEventListener("click", () => {
+  const index = config.stage_order.indexOf(tab);
+  if (index > 0) setTab(config.stage_order[index - 1]);
+});
+$("wizard-next").addEventListener("click", () => {
+  const index = config.stage_order.indexOf(tab);
+  if (index >= 0 && index < unlockedStageIndex()) setTab(config.stage_order[index + 1]);
+});
 $("download").addEventListener("click", () => {
   if (!selected) return;
   const url = URL.createObjectURL(new Blob([JSON.stringify(selected, null, 2)], { type: "application/json" }));
@@ -418,6 +575,7 @@ $("download").addEventListener("click", () => {
 
 async function initialize() {
   config = await api("/api/config");
+  evaluationShowcase = await api("/api/evaluation-showcase");
   if (config.mode !== "demo" || config.production_enabled) {
     throw new Error("The API is configured for a different execution mode.");
   }
@@ -428,6 +586,10 @@ async function initialize() {
     models.append(option);
   }
   await refresh();
+  renderEvaluationShowcase();
   if (selected?.training?.config) prefill(selected.training.config);
 }
+$("evidence-search").addEventListener("input", renderEvidenceRows);
+$("evidence-type").addEventListener("change", renderEvidenceRows);
+$("evidence-comparison").addEventListener("change", renderEvidenceRows);
 initialize().catch(showError);

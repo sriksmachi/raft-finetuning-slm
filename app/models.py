@@ -18,7 +18,16 @@ class Preparation(Action):
 
 class Parameters(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    base_model: Literal["demo-phi-3-mini", "demo-llama-3.2-3b"] = "demo-phi-3-mini"
+    base_model: Literal[
+        "demo-phi-3-mini",
+        "demo-phi-4-mini",
+        "demo-llama-3.2-1b",
+        "demo-llama-3.2-3b",
+        "demo-qwen-2.5-1.5b",
+        "demo-qwen-2.5-3b",
+        "demo-ministral-3b",
+        "demo-mistral-7b-instruct",
+    ] = "demo-phi-3-mini"
     max_seq_length: int = Field(default=2048, ge=128, le=8192)
     batch_size: int = Field(default=2, ge=1, le=32)
     gradient_accumulation: int = Field(default=8, ge=1, le=128)
@@ -36,3 +45,8 @@ class Registration(Action):
     confirmation: str = ""
     reason: str = Field(default="", max_length=2000)
     actor: str = Field(default="local-demo-user", min_length=1, max_length=100)
+
+
+class Deployment(Action):
+    actor: str = Field(default="local-demo-user", min_length=1, max_length=100)
+    traffic_percent: int = Field(default=10, ge=1, le=100)

@@ -25,12 +25,18 @@ class AzureMLConfig:
             raise ValueError(f"Missing Azure ML configuration: {names}")
         return cls(**values)  # type: ignore[arg-type]
 
-    def create_ml_client(self):
-        """Create an MLClient using the standard local/managed identity chain."""
-        from azure.ai.ml import MLClient
+    def create_credential(self):
+        """Create the standard local/managed identity credential chain."""
         from azure.identity import DefaultAzureCredential
 
-        credential = DefaultAzureCredential(exclude_interactive_browser_credential=False)
+        return DefaultAzureCredential(exclude_interactive_browser_credential=False)
+
+    def create_ml_client(self, credential=None):
+        """Create an MLClient using the supplied or standard credential chain."""
+        from azure.ai.ml import MLClient
+
+        if credential is None:
+            credential = self.create_credential()
         return MLClient(
             credential=credential,
             subscription_id=self.subscription_id,
