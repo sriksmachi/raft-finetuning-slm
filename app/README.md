@@ -75,6 +75,20 @@ Workflow metrics and costs are explicitly simulated. The separate Azure evaluati
 showcase is generated from a hash-verified predictions CSV by
 `scripts/export_evaluation_showcase.py` and served read-only from
 `app/data/evaluation_showcase.json`. Missing evidence is not a zero score.
+
+Refresh the bundled showcase after downloading a completed Stage 03 job:
+
+```powershell
+python scripts\export_evaluation_showcase.py `
+  --predictions <downloaded-job>\named-outputs\predictions\<run>_predictions.csv `
+  --evidence <downloaded-job>\named-outputs\predictions\evaluation_evidence.json `
+  --output app\data\evaluation_showcase.json
+```
+
+The exporter verifies the predictions SHA-256 against the evaluation manifest
+before writing application data. It retains only the query, reference CoT answer,
+three generated answers, per-record scores/latencies, and aggregate summaries;
+retrieved context and judge-reason text are not bundled into the UI.
 Operations retain their state after refresh; interrupted operations are reported
 as interrupted/failed on restart rather than silently marked successful.
 

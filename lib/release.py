@@ -127,17 +127,34 @@ def validate_test_rows(
     *, prefixes: tuple[str, ...] = ("oob", "fine_tuned", "gpt"),
 ) -> list[dict[str, Any]]:
     records = list(test_records)
-    expected = {str(record["id"]): record for record in records}
-    if not records or len(expected) != len(records):
-        raise ValueError("Sealed test records must have non-empty, unique IDs")
+    if not records or any(not str(record.get("id", "")).strip() for record in records):
+        raise ValueError("Sealed test records must have non-empty IDs")
     observed = [dict(row) for row in rows]
-    ids = [str(row["id"]) for row in observed]
-    if len(set(ids)) != len(ids) or set(ids) != set(expected):
-        raise ValueError("Evaluation must cover exactly the complete sealed test set, without duplicate IDs")
+    source_indices = []
     for row in observed:
-        source = expected[str(row["id"])]
+        value = row.get("source_index")
+        if isinstance(value, bool):
+            raise ValueError("Evaluation source_index must be an integer")
+        try:
+            source_index = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Evaluation source_index must be an integer") from exc
+        if str(source_index) != str(value).strip():
+            raise ValueError("Evaluation source_index must be an integer")
+        source_indices.append(source_index)
+    if (
+        len(source_indices) != len(records)
+        or len(set(source_indices)) != len(source_indices)
+        or set(source_indices) != set(range(len(records)))
+    ):
+        raise ValueError(
+            "Evaluation must cover exactly the complete sealed test set by source_index"
+        )
+    for row in observed:
+        source = records[int(row["source_index"])]
         for name, value in (
-            ("question", source["question"]), ("cot_answer", source["cot_answer"]),
+            ("id", str(source["id"])), ("question", source["question"]),
+            ("cot_answer", source["cot_answer"]),
             ("context", context_text(source["context"])), ("type", str(source.get("type", ""))),
         ):
             if row.get(name) != value:
@@ -364,6 +381,17 @@ def input_path(job, name: str) -> str:
     return path
 
 
+def is_training_output_path(path: str, training_job_name: str) -> bool:
+    if path == f"azureml://jobs/{training_job_name}/outputs/model":
+        return True
+    suffix = f"/paths/azureml/{training_job_name}/model/"
+    return (
+        path.startswith("azureml://")
+        and "/datastores/" in path
+        and path.endswith(suffix)
+    )
+
+
 def validate_cloud_evaluation(ml_client, training_job_name: str, evaluation_job_name: str) -> tuple[Any, Any]:
     training = ml_client.jobs.get(training_job_name)
     evaluation = ml_client.jobs.get(evaluation_job_name)
@@ -371,7 +399,9 @@ def validate_cloud_evaluation(ml_client, training_job_name: str, evaluation_job_
         raise ValueError("Training and inference evaluation jobs must both be Completed")
     if (evaluation.tags or {}).get("finetuning_job_name") != training_job_name:
         raise ValueError("Inference job tags refer to a different training candidate")
-    if input_path(evaluation, "fine_tuned_model") != f"azureml://jobs/{training_job_name}/outputs/model":
+    if not is_training_output_path(
+        input_path(evaluation, "fine_tuned_model"), training_job_name
+    ):
         raise ValueError("Inference did not mount the requested candidate's adapter output")
     if input_path(training, "base_model") != input_path(evaluation, "base_model"):
         raise ValueError("Inference used different base weights from training")

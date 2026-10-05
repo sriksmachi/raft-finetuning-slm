@@ -620,8 +620,12 @@ def test_ui_uses_one_banner_and_production_style_actions(studio):
     for marker in ("wizard-status", "wizard-back", "wizard-next",
                    "Candidate traffic", "zero-traffic candidate",
                    "Response-level model comparison", "evidence-search",
-                   "CoT answer", "Fine-tuned SLM answer"):
+                   "CoT answer", "Fine-tuned SLM answer",
+                   "AI-guided dataset creation, model recommendations"):
         assert marker in html
+    script = client.get("/static/app.js").text
+    assert "Quality scores and measured inference latencies are shown once" in script
+    assert "function renderMetrics" not in script
     for label in ("SIMULATED", "Simulate training", "demo fixtures",
                   "Create demo run", "Register demo candidate"):
         assert label not in html

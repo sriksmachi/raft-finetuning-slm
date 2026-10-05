@@ -55,9 +55,12 @@ def parse_args() -> argparse.Namespace:
         "--test-path",
         type=Path,
         default=PROJECT_ROOT / "data" / "training_data_raft" / "test.jsonl",
+        help=(
+            "Local test.jsonl that must byte-match the immutable Stage 03 test split. "
+            "Pass the downloaded versioned data-asset file if the repository copy differs."
+        ),
     )
     parser.add_argument("--release-root", type=Path, default=PROJECT_ROOT / "output" / "releases")
-
     parser.add_argument("--registered-model-name", default="slm-studio-llama32-3b")
     parser.add_argument("--registered-model-version")
     parser.add_argument("--endpoint-name", required=True)

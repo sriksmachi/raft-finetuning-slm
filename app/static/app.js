@@ -154,41 +154,6 @@ function renderRuns() {
   $("run-select").value = selected?.run_id ?? "";
 }
 
-function renderMetrics(evaluation) {
-  const wrap = element("div", undefined, "table-wrap");
-  const table = element("table");
-  table.append(element("caption", "Model comparison on the same sealed test split"));
-  const head = element("tr");
-  head.append(element("th", "Model"));
-  for (const metric of config.metrics) {
-    const unit = metric.unit === "score" ? "%" : metric.unit;
-    head.append(element("th", `${metric.label} (${unit})`));
-  }
-  const thead = element("thead");
-  thead.append(head);
-  table.append(thead);
-  const tbody = element("tbody");
-  const labels = { candidate: "Fine-tuned SLM", base_slm: "Original SLM", gpt: "GPT baseline" };
-  for (const model of evaluation.models) {
-    const row = element("tr");
-    row.append(element("td", labels[model.role] ?? model.role));
-    for (const metric of config.metrics) {
-      const value = model.metrics[metric.key];
-      const formatted = value == null ? "Not available" :
-        metric.key === "token_cost" ? `$${Number(value).toFixed(5)}` :
-        metric.key === "latency" ? Number(value).toFixed(0) :
-        `${(Number(value) * 100).toFixed(1)}%`;
-      row.append(element("td", formatted));
-    }
-    tbody.append(row);
-  }
-  table.append(tbody);
-  wrap.append(table);
-  $("evaluation-summary").append(wrap);
-  $("evaluation-summary").append(element("p",
-    "SLM costs use a per-response compute allocation; GPT costs use token pricing.", "hint"));
-}
-
 function scoreText(value) {
   return value == null ? "Not scored" : `${(Number(value) * 100).toFixed(1)}%`;
 }
@@ -262,6 +227,8 @@ function renderEvaluationShowcase() {
   }
   $("evaluation-showcase-title").textContent =
     `Response-level model comparison · ${summaryData.sample_count} records`;
+  $("showcase-provenance").textContent =
+    `Evaluation ${summaryData.evaluation_run_id} · Training ${summaryData.training_job_name} · ${new Date(summaryData.created_at).toLocaleString()}`;
   renderEvidenceRows();
 }
 
@@ -333,7 +300,11 @@ function renderSelected() {
       ["Candidate", referenceLabel(run.evaluation.candidate_id)], ["Test split", referenceLabel(run.evaluation.test_split)],
       ["Dataset fingerprint", referenceLabel(run.evaluation.data_fingerprint)],
     ]);
-    renderMetrics(run.evaluation);
+    $("evaluation-summary").append(element(
+      "p",
+      "Quality scores and measured inference latencies are shown once in the Azure evaluation evidence above.",
+      "hint",
+    ));
     const gate = run.evaluation.gate;
     const card = summary("decision-summary", "Registration gate", [
       ["Status", gate.status.toUpperCase()], ["Evidence", workflowText(gate.message)],

@@ -56,6 +56,9 @@ for logger_name in [
     "huggingface_hub",
     "accelerate",
     "datasets",
+    "httpx",
+    "httpx2",
+    "openai",
     "urllib3",
 ]:
     logging.getLogger(logger_name).setLevel(logging.WARNING)
@@ -536,6 +539,7 @@ def generate_predictions(
 ):
     if inference_batch_size <= 0:
         raise ValueError("inference_batch_size must be greater than zero")
+    artifact_attempt = f"{os.getpid()}-{time.time_ns()}"
 
     available_input_tokens = max_seq_length - max_new_tokens
     input_limit = min(max_input_tokens, available_input_tokens)
@@ -744,7 +748,9 @@ def generate_predictions(
                     ensure_ascii=False,
                     indent=2,
                 ),
-                artifact_file=f"inference_inputs/{mode}_longest_input.json",
+                artifact_file=(
+                    f"inference_inputs/{mode}_longest_input_{artifact_attempt}.json"
+                ),
             )
             log.info(
                 "Logged %s longest accepted input artifact for sample %d "

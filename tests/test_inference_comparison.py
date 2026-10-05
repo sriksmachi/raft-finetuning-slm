@@ -142,6 +142,12 @@ def test_gpt_call_uses_max_completion_tokens_for_reasoning_models():
     assert "max_tokens" not in completion.call_args.kwargs
 
 
+def test_inference_suppresses_successful_http_request_chatter():
+    source = (ROOT / "lib" / "inference.py").read_text(encoding="utf-8")
+    assert '"httpx2",' in source
+    assert 'logging.getLogger(logger_name).setLevel(logging.WARNING)' in source
+
+
 def test_all_three_responses_get_scores_reasons_and_exact_reference():
     judge = Mock(side_effect=_scores)
     result = evaluate_rag_predictions([_wide_row()], judge)[0]

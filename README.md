@@ -287,6 +287,10 @@ Stage 04 evaluates faithfulness, relevancy, correctness, slice quality,
 latency, and the GPT correctness comparison from the complete hash-bound CSV.
 Thresholds are explicit CLI policy and cannot be bypassed by Stage 04.
 JSON validity remains a diagnostic, not a release gate.
+The `--test-path` file must byte-match the immutable test split used by Stage 03;
+the manifest SHA-256 check rejects a newer or otherwise different repository copy.
+If they differ, download the exact versioned Azure ML data asset and pass its
+`test.jsonl` to Stage 04.
 Register the updated inference dependencies under a new unused environment
 version; existing images do not gain DeepEval when local files change.
 
