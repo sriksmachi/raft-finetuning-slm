@@ -3,13 +3,14 @@
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
-from app.models import ProductionPreparation
+from app.main import ROOT, create_app
+from app.models import Preparation, ProductionPreparation
 from app.preparation import build_data_card, prepare_data
 from app.production_api import MAX_LOG_BYTES, MAX_LOG_LINES
 
@@ -61,7 +62,7 @@ def wait(client, run_id):
 
 def test_prepare_preview_isolation_and_persistence(production, tmp_path):
     client, _application, body = production
-    assert client.get("/api/production/config").json()["enabled_stages"] == ["data_preparation"]
+    assert client.get("/api/production/config").json()["enabled_stages"] == ["data_preparation", "training"]
     assert client.get("/api/production/runs").json() == {"runs": []}
     assert client.get("/api/production/runs/latest").status_code == 404
     response = client.post("/api/production/runs", json=body)
@@ -75,6 +76,11 @@ def test_prepare_preview_isolation_and_persistence(production, tmp_path):
     assert card["validation"]["status"] == "passed"
     assert {sample["split"] for sample in card["samples"]} == {"train", "validation", "test"}
     assert all(sample["question"] and sample["cot_answer"] for sample in card["samples"])
+    assert all(set(sample) == {
+        "split", "id", "type", "question", "context", "oracle_context", "cot_answer", "instruction",
+    } for sample in card["samples"])
+    assert card["samples"][0]["context"] == {"sentences": [["source"]]}
+    assert card["samples"][0]["oracle_context"] == "Distinct source for train"
     assert 1 <= len(result["data_asset_version"]) <= 30
     assert result["data_asset_version"] != run_id
     assert card["asset_reference"] == f"azureml:slm-studio-data:{result['data_asset_version']}"
@@ -88,6 +94,35 @@ def test_prepare_preview_isolation_and_persistence(production, tmp_path):
     reopened = create_app(tmp_path / "other-demo", production_runs_dir=tmp_path / "production")
     with TestClient(reopened) as other:
         assert other.get(f"/api/production/runs/{run_id}").json()["data_card"] == card
+
+
+def test_old_saved_previews_are_refreshed_from_jsonl(production):
+    client, application, body = production
+    result = wait(client, client.post("/api/production/runs", json=body).json()["run_id"])
+    original = result["data_card"]["samples"]
+    result["data_card"]["samples"] = [
+        {"split": sample["split"], "question": sample["question"], "cot_answer": sample["cot_answer"]}
+        for sample in original
+    ]
+    application.state.production.store.save(result)
+    run_id = result["run_id"]
+    responses = [
+        client.get(f"/api/production/runs/{run_id}").json(),
+        client.get("/api/production/runs/latest").json(),
+        client.get("/api/production/runs").json()["runs"][0],
+    ]
+    assert all(record["data_card"]["samples"] == original for record in responses)
+    assert len(original) == 4
+
+
+def test_corrupt_local_samples_surface_an_error(production):
+    client, application, body = production
+    result = wait(client, client.post("/api/production/runs", json=body).json()["run_id"])
+    path = application.state.production.store.directory / result["run_id"] / "dataset" / "train.jsonl"
+    path.write_text('["not a dataset record"]\n', encoding="utf-8")
+    response = client.get(f"/api/production/runs/{result['run_id']}")
+    assert response.status_code == 500
+    assert "Unable to load dataset samples" in response.json()["detail"]
 
 
 @pytest.mark.parametrize("changes,status", [
@@ -311,16 +346,74 @@ def test_production_uses_distinct_persisted_versions_within_azure_limit(producti
     runner = AsyncMock(side_effect=application.state.production.runner)
     application.state.production.runner = runner
     versions = []
-    for _ in range(2):
-        response = client.post("/api/production/runs", json=body)
+    for timestamp in ("211026201403", "211026201404"):
+        response = client.post("/api/production/runs", json={
+            **body, "data_asset_version": f"data-{timestamp}",
+        })
         assert response.status_code == 202
         submitted = response.json()
         record = wait(client, submitted["run_id"])
         version = record["data_asset_version"]
         assert version == submitted["data_asset_version"]
         assert len(submitted["run_id"]) == 37
-        assert len(version) == 30 and version.isalnum()
+        assert version == f"data-{timestamp}"
+        assert len(version) == 17
         assert runner.call_args.args[2] == version
         assert record["data_card"]["asset_reference"].endswith(f":{version}")
         versions.append(version)
     assert versions[0] != versions[1]
+
+
+@pytest.mark.parametrize("version", [
+    "prod-" + "a" * 32, "data-2110262014", "data-211026201403-extra",
+    "data-321026201403", "data-211026251403",
+])
+def test_request_rejects_invalid_dataset_version(production, version):
+    client, application, body = production
+    runner = AsyncMock()
+    application.state.production.runner = runner
+    assert client.post("/api/production/runs", json={
+        **body, "data_asset_version": version,
+    }).status_code == 422
+    runner.assert_not_called()
+
+
+def test_generated_version_uses_utc_date_suffix():
+    before = datetime.now(timezone.utc).strftime("data-%d%m%y%H%M%S")
+    body = ProductionPreparation(source_folder="pdfs")
+    after = datetime.now(timezone.utc).strftime("data-%d%m%y%H%M%S")
+    assert body.data_asset_version in {before, after}
+    assert body.data_asset_name == "slm-studio-data"
+
+
+def test_duplicate_dataset_version_is_rejected_before_generation(production):
+    client, application, body = production
+    body = {**body, "data_asset_version": "data-211026201403"}
+    run_id = client.post("/api/production/runs", json=body).json()["run_id"]
+    wait(client, run_id)
+    runner = AsyncMock()
+    application.state.production.runner = runner
+    assert client.post("/api/production/runs", json=body).status_code == 409
+    runner.assert_not_called()
+
+
+def test_default_data_folder_in_ui_and_request_models():
+    assert Preparation(recipe="context-grounded").source_folder == "data/"
+    assert ProductionPreparation().source_folder == "data/"
+    html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    assert 'name="source_folder" value="data/"' in html
+
+
+def test_production_prepares_default_data_folder(production, tmp_path, monkeypatch):
+    client, _application, body = production
+    directory = tmp_path / "data"
+    directory.mkdir()
+    (directory / "example.pdf").write_bytes(b"test PDF placeholder")
+    monkeypatch.chdir(tmp_path)
+    body = {key: value for key, value in body.items() if key != "source_folder"}
+    response = client.post("/api/production/runs", json=body)
+    assert response.status_code == 202, response.text
+    record = wait(client, response.json()["run_id"])
+    assert record["source_folder"] == str(directory)
+    assert record["data_card"]["source_folder"] == str(directory)
+    assert record["stages"]["data_preparation"]["status"] == "succeeded"

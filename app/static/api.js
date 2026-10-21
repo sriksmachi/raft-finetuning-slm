@@ -1,6 +1,6 @@
 /** Shared HTTP contract; production and demo runs use isolated endpoints. */
 export async function api(path, body, mode = "demo") {
-  if (mode === "production" && (path === "/api/config" || path.startsWith("/api/runs"))) {
+  if (mode === "production" && (path === "/api/config" || path === "/api/training" || path.startsWith("/api/runs"))) {
     path = path.replace("/api/", "/api/production/");
   }
   const response = await fetch(path, {

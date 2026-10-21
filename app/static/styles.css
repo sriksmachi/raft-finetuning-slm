@@ -93,6 +93,17 @@ table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 18px 0 
 th, td { padding: 11px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
 th:first-child, td:first-child { text-align: left; }
 th { color: var(--muted); font-weight: 600; background: #f5f8f5; }
+.sample-data { margin: 22px 0; }
+.sample-data .table-wrap { max-height: 520px; border: 1px solid var(--line); border-radius: 8px; }
+.sample-data-table { min-width: 2400px; table-layout: fixed; margin: 0; }
+.sample-data-table th, .sample-data-table td { text-align: left; vertical-align: top; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.sample-data-table th { position: sticky; top: 0; }
+.sample-data-table th[data-field="split"], .sample-data-table th[data-field="id"], .sample-data-table th[data-field="type"] { width: 100px; }
+.sample-data-table th[data-field="cot_answer"] { width: 520px; }
+.sample-data-table td:last-child { white-space: pre-wrap; }
+.sample-data-table tbody tr:nth-child(even) { background: #f5f8f5; }
+dialog { width: min(720px, 90vw); max-height: 85vh; overflow: auto; color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 24px; }
+dialog::backdrop { background: #102a2466; }
 .record-panel { margin-top: 22px; font-size: 12px; }
 summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 pre { padding: 17px; border: 1px solid var(--line); border-radius: 8px; background: #edf2ee; overflow: auto; font-size: 11px; max-height: 400px; white-space: pre-wrap; overflow-wrap: anywhere; }

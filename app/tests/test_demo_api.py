@@ -8,7 +8,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from app.fixtures import METRICS, STAGES
+from app.fixtures import METRICS, STAGES, new_record
 from app.main import ROOT, create_app
 from app.models import Parameters
 
@@ -283,8 +283,11 @@ def test_training_validation(studio, changes):
 
 
 def test_prerequisites(studio):
-    client, _ = studio
-    run_id = prepare(client)["run_id"]
+    client, store = studio
+    record = new_record("demo-prerequisites", "demo", "context-grounded", "passing")
+    record["stages"]["data_preparation"]["status"] = "running"
+    store.save(record)
+    run_id = record["run_id"]
     assert client.post(f"/api/runs/{run_id}/training",
                        json={"confirmed": True, **Parameters().model_dump()}).status_code == 409
     assert client.post(f"/api/runs/{run_id}/evaluation", json={"confirmed": True}).status_code == 409
@@ -502,8 +505,11 @@ def test_progress_is_persisted(tmp_path):
         result = client.get(f"/api/runs/{run_id}").json()
         assert 0 < result["stages"]["data_preparation"]["progress"] < 100
         assert result["status"] == "running"
-        assert application.state.store.read(run_id)["stages"] == result["stages"]
-        assert wait(client, run_id, "data_preparation")["stages"]["data_preparation"]["progress"] == 100
+        persisted = application.state.store.read(run_id)
+        assert persisted["stages"]["data_preparation"]["progress"] >= result["stages"]["data_preparation"]["progress"]
+        complete = wait(client, run_id, "data_preparation")
+        assert complete["stages"]["data_preparation"]["progress"] == 100
+        assert application.state.store.read(run_id)["stages"] == complete["stages"]
 
 
 def test_training_failure_is_visible_and_logged(studio, caplog):

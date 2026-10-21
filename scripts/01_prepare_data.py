@@ -59,7 +59,7 @@ def parse_args() -> argparse.Namespace:
                         help="Skip Azure ML data asset publication")
     parser.add_argument("--data-asset-name", default="slm-studio-instance-security")
     parser.add_argument("--data-asset-version",
-                        default=datetime.now(timezone.utc).strftime("%Y%m%d.%H%M%S"),
+                        default=datetime.now(timezone.utc).strftime("data-%d%m%y%H%M%S"),
                         help="Azure ML data asset version (1 to 30 characters)")
     parser.add_argument(
         "--datastore",

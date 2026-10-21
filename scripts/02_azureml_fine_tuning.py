@@ -29,12 +29,15 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
 import time
+from concurrent.futures import Future
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Thread
 
 from azure.identity import CredentialUnavailableError
 from dotenv import load_dotenv
@@ -156,7 +159,49 @@ def parse_args() -> argparse.Namespace:
         help="Block and stream logs until the submitted job reaches a terminal state.",
     )
     parser.add_argument("--log-level", default="INFO")
+    parser.add_argument("--receipt-path", help="Write an atomic job receipt for a local Studio run.")
     return parser.parse_args()
+
+
+def write_job_receipt(job, args: argparse.Namespace, status: str) -> None:
+    if not getattr(args, "receipt_path", None):
+        return
+    path = Path(args.receipt_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".pending")
+    payload = {
+        "job_name": job.name, "job_id": job.id,
+        "job_uri": getattr(job, "studio_url", None),
+        "status": status, "dataset_id": f"azureml:{args.data_asset_name}:{args.data_asset_version}",
+        "model_artifact": f"azureml://jobs/{job.name}/outputs/model/paths/",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def monitor_training_job(ml_client, job_name: str, args: argparse.Namespace):
+    streamed: Future[None] = Future()
+
+    def stream_logs():
+        try:
+            ml_client.jobs.stream(job_name)
+        except Exception as exc:  # noqa: BLE001 - Re-raised by streamed.result() on the main thread.
+            streamed.set_exception(exc)
+        else:
+            streamed.set_result(None)
+
+    Thread(target=stream_logs, name="azure-training-logs", daemon=True).start()
+    while True:
+        if streamed.done():
+            streamed.result()
+        job = get_job_after_stream(ml_client, job_name)
+        write_job_receipt(job, args, job.status)
+        log.info("Azure ML fine-tuning job %s: %s", job_name, job.status)
+        if job.status in {"Completed", "Failed", "Canceled"}:
+            streamed.result()
+            return job
+        time.sleep(10)
 
 
 def register_environment(ml_client, args: argparse.Namespace):
@@ -231,6 +276,7 @@ def submit_training(ml_client, args: argparse.Namespace, environment_id: str):
         seed=args.seed,
     )
     log.info("Job name: %s", submitted_job.name)
+    write_job_receipt(submitted_job, args, "Submitted")
 
     run_path = record_run(
         submitted_job.name,
@@ -281,8 +327,12 @@ def main() -> int:
     submitted_job = submit_training(ml_client, args, training_environment.id)
     if args.wait:
         log.info("Waiting for job %s to complete...", submitted_job.name)
-        ml_client.jobs.stream(submitted_job.name)
-        completed_job = get_job_after_stream(ml_client, submitted_job.name)
+        if args.receipt_path:
+            completed_job = monitor_training_job(ml_client, submitted_job.name, args)
+        else:
+            ml_client.jobs.stream(submitted_job.name)
+            completed_job = get_job_after_stream(ml_client, submitted_job.name)
+        write_job_receipt(completed_job, args, completed_job.status)
         if completed_job.status != "Completed":
             raise RuntimeError(f"Training did not complete successfully: {completed_job.status}")
         record_run(submitted_job.name, status="completed")

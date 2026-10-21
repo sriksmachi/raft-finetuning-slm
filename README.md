@@ -3,8 +3,8 @@
 Prepare training data, explore fine-tuning, compare models, and review deployment decisions.
 
 - **Demo:** explore the full workflow without Azure calls or charges.
-- **Production:** prepare real datasets using GPT and publish them to Azure ML.
-- Training, evaluation, and deployment in production currently use command-line tools, not the UI.
+- **Production:** prepare real datasets using GPT, publish them to Azure ML, and submit fine-tuning.
+- Production evaluation and deployment currently use command-line tools, not the UI.
 
 ## 1. Start the app
 
@@ -73,7 +73,7 @@ Do not commit credentials. Production preparation makes billable GPT calls and p
 ### Generate a dataset
 
 1. Select **Production**.
-2. Enter a folder containing PDFs that the app's computer can access.
+2. Use the default `data/` folder, or enter another folder containing PDFs that the app's computer can access.
 3. Choose **Context-grounded (RAFT)**. Context-assisted generation is not available in production.
 4. Set **Number of samples (total)**:
    - This is the exact total across train, validation, and test.
@@ -87,7 +87,7 @@ Do not commit credentials. Production preparation makes billable GPT calls and p
    - Generated sample count and split counts.
    - Validation result and dataset fingerprint.
    - Azure ML data asset reference.
-   - Up to two sample questions and answers per split.
+   - The **Sample data** table: every generated field, including context, oracle context, CoT answer, and instruction, with up to two samples per split.
 
 ### Review or retry a run
 
@@ -99,7 +99,8 @@ Do not commit credentials. Production preparation makes billable GPT calls and p
 - Run one preparation at a time using one local app instance.
 - Completed results remain available after refreshing or restarting.
 - Each new production submission creates a new run and data-asset version.
-- Studio generates asset versions within Azure ML's 30-character limit.
+- Studio leaves the dataset name unchanged and uses `data-DDMMYYHHMMSS` (UTC) as its version.
+- Versions are 17 characters, within Azure ML's 30-character limit; duplicate name/version submissions are rejected.
 
 If only publication failed, reuse the prepared dataset without generating it again:
 
@@ -114,7 +115,25 @@ Replace the run ID and asset name with your failed run's values.
 Choose an unused version of 1 to 30 characters.
 This publishes the data asset; the original Studio run remains marked failed.
 
-## 4. Continue with the command-line workflow
+## 4. Fine-tune a model
+
+1. Select **Production**, then **Configure fine-tuning** or the **Fine-tuning** step.
+2. Choose a successfully published dataset from a previous preparation run.
+3. To use another Azure dataset, choose **Existing Azure dataset ID** and enter `azureml:dataset-name:version`.
+4. Review the format popup. RAFT assets need `train.jsonl` and `validation.jsonl` with the required grounded fields; keep `test.jsonl` for evaluation. RAG training is not available.
+5. Choose a Foundry base model and review all trainer settings:
+   - Sequence-length fallback, learning rate, epochs, batch size, and gradient accumulation.
+   - LoRA rank, adapter name, chat template, seed, and 4-bit loading.
+6. Confirm the dataset, settings, and GPU charges, then click **Start training**.
+7. Watch **Fine-tuning job status**; the UI polls the run log every 10 seconds.
+8. Expand **Recent job logs** for submission, streamed training logs, Azure job status heartbeats, completion, or errors. Status is logged every 10 seconds while waiting for Azure.
+9. Open the saved Azure ML job link for detailed training progress and GPU trainer logs.
+
+- Azure compute, managed identity, and environment use the existing backend configuration.
+- Each submission creates a separate training run and preserves the source preparation run.
+- If monitoring is interrupted, check the saved Azure job before retrying. Stopping the app does not cancel the remote job.
+
+## 5. Continue with the command-line workflow
 
 1. Use the same Azure setup above.
 2. Check the required options for each stage:
@@ -135,7 +154,7 @@ This publishes the data asset; the original Studio run remains marked failed.
 
 Review Azure costs, permissions, compute, and release settings before running these stages.
 
-## 5. Check the installation
+## 6. Check the installation
 
 Run the fast, credential-free production integration tests:
 

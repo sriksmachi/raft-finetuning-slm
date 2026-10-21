@@ -51,13 +51,15 @@ function renderPreparationLog() {
   const visible = mode === "production" && Boolean(selected);
   $("preparation-log-panel").hidden = !visible;
   if (!visible) return;
+  const training = selected.run_type === "training";
+  $("job-log-title").textContent = training ? "Fine-tuning job status" : "Preparation job status";
   const current = preparationLog?.run_id === selected.run_id ? preparationLog : undefined;
   $("preparation-status").textContent = preparationLogError
-    || (current ? preparationStatusText(current.current_status) : "Loading preparation log...");
+    || (current ? preparationStatusText(current.current_status) : `Loading ${training ? "training" : "preparation"} log...`);
   $("preparation-log").textContent = current?.log || "";
   $("preparation-log-updated").textContent = current
     ? `Last log update: ${new Date(current.updated_at).toLocaleString()}. ${running() ? "Checks every 10 seconds." : "Job is no longer running."}${current.truncated ? " Showing recent output only." : ""}`
-    : "Checks every 10 seconds while preparation is running.";
+    : "Checks every 10 seconds while the job is running.";
 }
 
 async function refreshPreparationLog() {
@@ -118,8 +120,8 @@ function running() {
 }
 
 function unlockedStageIndex(run = selected) {
+  if (mode === "production" && config) return 1;
   if (!run || !config) return 0;
-  if (mode === "production") return 0;
   let unlocked = 0;
   for (let index = 0; index < config.stage_order.length - 1; index += 1) {
     const stage = config.stage_order[index];
@@ -147,7 +149,7 @@ function updateWizardNavigation() {
   $("wizard-position").textContent = `Step ${index + 1} of ${config.stage_order.length}`;
   const nextRequired = config.stage_order[unlocked];
   $("wizard-status").textContent = mode === "production"
-    ? "Only data preparation is enabled in production. Later stages are not connected."
+    ? "Data preparation and fine-tuning are available. Evaluation and release are not connected."
     : selected.status === "completed"
     ? "Workflow complete. Review any completed step."
     : `Current required step: ${stageLabels[nextRequired]}. Future steps unlock in order.`;
@@ -281,6 +283,121 @@ function renderEvaluationShowcase() {
   renderEvidenceRows();
 }
 
+function renderDataSamples(samples) {
+  const section = element("section", undefined, "sample-data");
+  const heading = element("h3", "Sample data");
+  heading.id = "sample-data-heading";
+  section.setAttribute("aria-labelledby", heading.id);
+  section.append(heading);
+  if (!samples.length) {
+    section.append(element("p", "No sample data is available for this run.", "hint"));
+  } else {
+    const wrapper = element("div", undefined, "table-wrap");
+    wrapper.tabIndex = 0;
+    wrapper.setAttribute("role", "region");
+    wrapper.setAttribute("aria-label", "Sample data table");
+    const table = element("table", undefined, "sample-data-table");
+    table.append(element("caption", "Prepared dataset samples with all generated fields", "sr-only"));
+    const header = element("thead");
+    const headerRow = element("tr");
+    const columns = [
+      ["split", "Split"], ["id", "ID"], ["type", "Type"], ["question", "Question"],
+      ["context", "Context"], ["oracle_context", "Oracle context"],
+      ["cot_answer", "CoT answer"], ["instruction", "Instruction"],
+    ];
+    const known = new Set(columns.map(([key]) => key));
+    for (const sample of samples) {
+      for (const key of Object.keys(sample)) {
+        if (!known.has(key)) {
+          columns.push([key, key.replaceAll("_", " ")]);
+          known.add(key);
+        }
+      }
+    }
+    for (const [key, label] of columns) {
+      const cell = element("th", label);
+      cell.setAttribute("scope", "col");
+      cell.dataset.field = key;
+      headerRow.append(cell);
+    }
+    header.append(headerRow);
+    const body = element("tbody");
+    for (const sample of samples) {
+      const row = element("tr");
+      for (const [key] of columns) {
+        const value = key === "split" ? sample.split ?? "train" : sample[key];
+        const text = value === undefined ? "Not in saved preview"
+          : typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
+        const cell = element("td", text);
+        cell.dataset.field = key;
+        row.append(cell);
+      }
+      body.append(row);
+    }
+    table.append(header, body);
+    wrapper.append(table);
+    section.append(element("p", "Up to two samples per split. Scroll horizontally to review every field.", "hint"), wrapper);
+  }
+  $("data-summary").append(section);
+}
+
+function availableDatasets() {
+  return runs.filter((run) => run.mode === "production" && run.simulated === false
+    && run.run_type !== "training" && run.recipe === "context-grounded"
+    && run.stages.data_preparation.status === "succeeded" && run.data_card?.asset_reference);
+}
+
+function renderTrainingDatasets() {
+  if (mode !== "production") return;
+  const control = field($("training-form"), "dataset_run_id");
+  const previous = control.value;
+  const datasets = availableDatasets();
+  control.replaceChildren();
+  for (const run of datasets) {
+    const option = element("option", `${run.data_card.asset_reference} (${run.data_card.record_count} samples)`);
+    option.value = run.run_id;
+    control.append(option);
+  }
+  if (datasets.some((run) => run.run_id === previous)) control.value = previous;
+  else if (datasets.some((run) => run.run_id === selected?.run_id)) control.value = selected.run_id;
+  updateDatasetControls();
+}
+
+function updateDatasetControls() {
+  if (mode !== "production") return;
+  const form = $("training-form");
+  const manual = field(form, "dataset_source").value === "manual";
+  $("dataset-run-field").hidden = manual;
+  $("dataset-id-field").hidden = !manual;
+  field(form, "dataset_id").disabled = !manual;
+  field(form, "dataset_id").required = manual;
+  field(form, "dataset_run_id").disabled = manual;
+  field(form, "dataset_run_id").required = !manual;
+  const rag = field(form, "dataset_recipe").value === "context-assisted";
+  $("dataset-selection-note").textContent = rag
+    ? "RAG retrieves context at inference time; its separate training schema is not defined. Choose RAFT to train."
+    : manual ? "Use a pinned URI-folder asset: azureml:dataset-name:version. The job validates train/validation JSONL records."
+      : "Choose a successfully published production dataset. Preparing a new dataset is not required.";
+  $("train").disabled = busy || runs.some((run) => run.status === "running") || rag
+    || (!manual && !field(form, "dataset_run_id").value);
+}
+
+function showDatasetFormat() {
+  const rag = field($("training-form"), "dataset_recipe").value === "context-assisted";
+  $("dataset-format-title").textContent = rag ? "RAG dataset guidance" : "Expected RAFT dataset format";
+  $("dataset-format-description").textContent = rag
+    ? "RAG supplies retrieved context when answering; this is not a fine-tuning recipe by itself. A separate RAG training schema is not defined, so RAG training is disabled. The example below is the supported RAFT format."
+    : "Enter azureml:dataset-name:version for a URI-folder asset containing train.jsonl and validation.jsonl. Keep test.jsonl sealed for evaluation. Each JSONL line must contain all fields below; type must be oracle or distractor. Instructions contain the context and question, and cot_answer contains the grounded answer. Source contexts must not overlap across splits.";
+  $("dataset-format-example").textContent = JSON.stringify({
+    id: "sample-1", type: "oracle", question: "What is HBM?",
+    context: { sentences: [["HBM is high-bandwidth memory."]] },
+    oracle_context: "HBM is high-bandwidth memory.",
+    instruction: "<DOCUMENT>HBM is high-bandwidth memory.</DOCUMENT>\n### Question:\nWhat is HBM?",
+    cot_answer: "<ANSWER>High-bandwidth memory.</ANSWER>",
+  }, null, 2);
+  if (!$("dataset-format-dialog").open) $("dataset-format-dialog").showModal();
+}
+
 function renderSelected() {
   if (!selected || !config) return;
   const run = selected;
@@ -340,12 +457,7 @@ function renderSelected() {
       ["Validation", typeof card.validation === "object" ? `${card.validation.status}: ${card.validation.checked_records} records checked, ${card.validation.invalid_records} invalid` : card.validation],
       ["Fingerprint", referenceLabel(card.fingerprint)], ["Data asset", referenceLabel(card.asset_reference ?? card.azure_ml_asset)],
     ]);
-    for (const sample of card.samples ?? []) {
-      const preview = element("details");
-      preview.append(element("summary", `${sample.split ?? "train"}: ${sample.question}`),
-        element("p", sample.cot_answer));
-      $("data-summary").append(preview);
-    }
+    renderDataSamples(card.samples ?? []);
   } else {
     $("data-summary").append(element("p", "Data preparation has not completed yet.", "hint"));
   }
@@ -354,8 +466,17 @@ function renderSelected() {
       ["Base model", modelLabel(run.training.config.base_model)],
       [stageSucceeded("training") ? "Candidate" : "Planned candidate", referenceLabel(run.training.candidate_id)],
       ["Training job", referenceLabel(run.training.job_name)],
+      ...(mode === "production" ? [["Azure job status", run.training.job_status],
+        ["Dataset", run.training.dataset_id]] : []),
       [stageSucceeded("training") ? "Saved artifact" : "Expected artifact (not produced)", referenceLabel(run.training.model_artifact)],
     ]);
+    if (mode === "production" && run.training.job_uri?.startsWith("https://")) {
+      const link = element("a", "Open training job in Azure ML");
+      link.href = run.training.job_uri;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      $("training-summary").append(link);
+    }
   }
   if (run.evaluation) {
     summary("evaluation-summary", "Bound evaluation evidence", [
@@ -441,6 +562,7 @@ function renderSelected() {
   $("create-form").querySelector("button").disabled = busy || running();
   $("run-select").disabled = busy;
   $("new-run").disabled = busy;
+  renderTrainingDatasets();
   setTab(tab);
   renderRuns();
   schedulePoll();
@@ -474,7 +596,7 @@ async function refresh() {
       const completedRunningStage = config.stage_order.find((name) =>
         previous.stages[name].status === "running"
         && selected.stages[name].status === "succeeded");
-      if (completedRunningStage) tab = mode === "production" ? "data_preparation" : selected.current_stage;
+      if (completedRunningStage) tab = mode === "production" ? completedRunningStage : selected.current_stage;
     }
     if (!selected && runs.length) {
       selected = runs[0];
@@ -492,8 +614,9 @@ async function refresh() {
       $("run-meta").textContent = "Choose a source folder to create your first run.";
       $("run-status").textContent = "READY";
       $("wizard-status").textContent = mode === "production"
-        ? "Only data preparation is enabled in production. Later stages are not connected." : "";
+        ? "Data preparation and fine-tuning are available. Evaluation and release are not connected." : "";
       updateWizardNavigation();
+      renderTrainingDatasets();
     }
   } finally {
     refreshing = false;
@@ -524,7 +647,9 @@ function prefill(parameters) {
   const form = $("training-form");
   for (const [name, value] of Object.entries(parameters)) {
     const control = field(form, name);
-    if (control && control.type !== "checkbox") control.value = value;
+    if (control?.type === "checkbox") control.checked = value;
+    else if (control) control.value = value;
+    if (mode === "production" && name === "base_model") field(form, "production_base_model").value = value;
   }
 }
 
@@ -579,13 +704,35 @@ $("create-form").addEventListener("submit", (event) => {
     field(form, "confirmed").checked = false;
   });
 });
-bindForm("training-form", "training", (form) => {
+function trainingBody(form) {
   const body = { confirmed: field(form, "confirmed").checked, base_model: field(form, "base_model").value };
   for (const name of ["max_seq_length", "batch_size", "gradient_accumulation", "learning_rate", "epochs", "lora_rank"]) {
     body[name] = Number(field(form, name).value);
   }
+  if (mode === "production") {
+    body.base_model = field(form, "production_base_model").value.trim();
+    body.dataset_recipe = field(form, "dataset_recipe").value;
+    if (field(form, "dataset_source").value === "manual") body.dataset_id = field(form, "dataset_id").value.trim();
+    else body.dataset_run_id = field(form, "dataset_run_id").value;
+    body.seed = Number(field(form, "seed").value);
+    body.load_in_4bit = field(form, "load_in_4bit").checked;
+    body.chat_template = field(form, "chat_template").value.trim();
+    body.lora_adapter_name = field(form, "lora_adapter_name").value.trim();
+  }
   return body;
-}, "training");
+}
+$("training-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (mode !== "production" && !selected) return;
+  action(async () => {
+    const path = mode === "production" ? "/api/training"
+      : `/api/runs/${encodeURIComponent(selected.run_id)}/training`;
+    selected = await api(path, trainingBody(form));
+    tab = "training";
+    field(form, "confirmed").checked = false;
+  });
+});
 bindForm("evaluation-form", "evaluation", (form) => ({ confirmed: field(form, "confirmed").checked }), "evaluation");
 bindForm("register-form", "register", (form) => ({
   confirmed: field(form, "confirmed").checked,
@@ -607,6 +754,16 @@ $("suggest").addEventListener("click", () => action(async () => {
 $("new-run").addEventListener("click", () => {
   setTab("data_preparation");
   field($("create-form"), "source_folder").focus();
+});
+$("configure-training").addEventListener("click", () => setTab("training"));
+$("dataset-format-help").addEventListener("click", showDatasetFormat);
+field($("training-form"), "dataset_source").addEventListener("change", () => {
+  updateDatasetControls();
+  if (field($("training-form"), "dataset_source").value === "manual") showDatasetFormat();
+});
+field($("training-form"), "dataset_recipe").addEventListener("change", () => {
+  updateDatasetControls();
+  if (field($("training-form"), "dataset_source").value === "manual") showDatasetFormat();
 });
 $("refresh").addEventListener("click", () => action(refresh));
 $("run-select").addEventListener("change", (event) => selectRun(event.target.value));
@@ -636,7 +793,29 @@ async function initialize() {
   }
   $("mode").value = mode;
   $("mode-note").textContent = mode === "demo" ? "Demo only. No Azure services are called."
-    : "Production: real, billable GPT generation and Azure ML publication. Only data preparation is available.";
+    : "Production: real, billable data preparation and Azure ML fine-tuning. Evaluation and release are not connected.";
+  for (const id of ["production-dataset-options", "production-base-model-field", "production-trainer-options", "configure-training"]) {
+    $(id).hidden = mode !== "production";
+  }
+  $("demo-base-model-field").hidden = mode === "production";
+  $("training-confirmation-label").textContent = mode === "production"
+    ? "I confirm the dataset, trainer settings, and billable Azure GPU training job."
+    : "I confirm these training parameters.";
+  for (const name of ["production_base_model", "chat_template", "lora_adapter_name", "seed"]) {
+    field($("training-form"), name).required = mode === "production";
+  }
+  const trainingForm = $("training-form");
+  for (const [name, maximum] of Object.entries(mode === "production"
+    ? { max_seq_length: 32768, batch_size: 64, gradient_accumulation: 256, lora_rank: 256, epochs: 100 }
+    : { max_seq_length: 8192, batch_size: 32, gradient_accumulation: 128, lora_rank: 128, epochs: 20 })) {
+    field(trainingForm, name).max = maximum;
+  }
+  field(trainingForm, "epochs").min = mode === "production" ? "0" : "1";
+  field(trainingForm, "epochs").step = mode === "production" ? "any" : "1";
+  if (mode === "production") {
+    prefill(config.training_defaults ?? {});
+    $("suggest").hidden = true;
+  }
   $("production-options").hidden = mode !== "production";
   $("demo-options").hidden = mode !== "demo";
   field($("create-form"), "recipe").querySelector('[value="context-assisted"]').disabled = mode === "production";
@@ -648,6 +827,11 @@ async function initialize() {
     const option = element("option", modelLabel(model.id));
     option.value = model.id;
     models.append(option);
+    if (mode === "production") {
+      const suggestion = element("option");
+      suggestion.value = model.id;
+      $("production-models").append(suggestion);
+    }
   }
   $("mode").addEventListener("change", (event) => {
     localStorage.setItem("studio-mode", event.target.value);

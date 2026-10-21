@@ -131,8 +131,13 @@ class DemoStore:
                 if not interrupted:
                     continue
                 for name in interrupted:
+                    message = (
+                        "Monitoring interrupted. The Azure ML job may still be running; check its job link before resubmitting."
+                        if self.mode == "production" and name == "training"
+                        else f"Interrupted: {self.mode} server stopped before this stage completed."
+                    )
                     record["stages"][name].update(
-                        status="failed", error=f"Interrupted: {self.mode} server stopped before this stage completed.",
+                        status="failed", error=message,
                         completed_at=now(),
                     )
                     audit(record, "stage_interrupted", stage=name)

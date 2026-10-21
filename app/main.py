@@ -29,6 +29,14 @@ def create_app(
     application.router.lifespan_context = lifespan
     application.include_router(production.router)
     application.state.production = production
+
+    @application.middleware("http")
+    async def refresh_frontend_assets(request, call_next):
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
     return application
 
 

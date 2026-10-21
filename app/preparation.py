@@ -1,6 +1,7 @@
 """Production adapter for the existing preparation CLI, isolated per run."""
 
 import asyncio
+import json
 import os
 import sys
 from pathlib import Path
@@ -11,27 +12,43 @@ from app.models import ProductionPreparation
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def append_job_status(directory: Path, message: str) -> None:
+def append_job_status(directory: Path, message: str, log_name: str = "preparation.log") -> None:
     directory.mkdir(parents=True, exist_ok=True)
-    with (directory / "preparation.log").open("a", encoding="utf-8") as log:
+    with (directory / log_name).open("a", encoding="utf-8") as log:
         log.write(f"\n{now()} [STATUS] {message}\n")
         log.flush()
 
 
+def load_data_samples(dataset_dir: Path) -> list[dict]:
+    samples = []
+    for split in ("train", "validation", "test"):
+        path = dataset_dir / f"{split}.jsonl"
+        if path.is_symlink():
+            raise ValueError("Symlink dataset samples are not supported.")
+        with path.open(encoding="utf-8") as stream:
+            count = 0
+            for line in stream:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if not isinstance(row, dict):
+                    raise TypeError(f"{split} sample must be a JSON object.")
+                samples.append({**row, "split": split})
+                count += 1
+                if count == 2:
+                    break
+    return samples
+
+
 def build_data_card(body: ProductionPreparation, directory: Path, version: str) -> dict:
-    from lib.data import SPLITS, dataset_fingerprint, read_jsonl, validate_dataset
+    from lib.data import SPLITS, dataset_fingerprint, validate_dataset
 
     dataset_dir = directory / "dataset"
     validation = validate_dataset(dataset_dir)
     counts = {split: validation[split]["rows"] for split in SPLITS}
     if sum(counts.values()) != body.num_samples:
         raise ValueError("Prepared dataset does not match the requested sample count")
-    samples = []
-    for split in SPLITS:
-        for row in read_jsonl(dataset_dir / f"{split}.jsonl")[:2]:
-            samples.append({"split": split, **{
-                key: row[key] for key in ("question", "cot_answer", "type", "instruction")
-            }})
+    samples = load_data_samples(dataset_dir)
     fingerprint = dataset_fingerprint(dataset_dir)
     reference = f"azureml:{body.data_asset_name}:{version}"
     return {
