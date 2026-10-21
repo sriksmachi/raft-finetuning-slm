@@ -136,6 +136,11 @@ def write_manifest(dataset_dir: str | Path, summary: dict[str, Any]) -> Path:
     return path
 
 
+def validate_data_asset_version(version: str) -> None:
+    if not isinstance(version, str) or not 1 <= len(version) <= 30:
+        raise ValueError("Azure ML data asset version must contain 1 to 30 characters")
+
+
 def publish_data_asset(
     ml_client,
     dataset_dir: str | Path,
@@ -144,6 +149,7 @@ def publish_data_asset(
     description: str,
     datastore: str | None = None,
 ):
+    validate_data_asset_version(version)
     from azure.ai.ml.constants import AssetTypes
     from azure.ai.ml.entities import Data
 

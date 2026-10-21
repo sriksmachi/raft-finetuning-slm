@@ -18,6 +18,7 @@ import pytest
 from lib.evaluation import RAG_METRICS, context_text, evaluate_rag_predictions
 from lib.prompts import question_context_messages
 from lib.release import write_evaluation_manifest
+from lib.llm_baseline import apply_llm_baseline, write_llm_baseline
 from test_lora_artifacts import ROOT, _functions
 
 
@@ -35,8 +36,17 @@ def _scores(**kwargs):
 
 
 def _wide_row():
-    row = dict(_record(), oob_slm_response="Base answer", fine_tuned_slm_response="Adapter answer",
-               gpt_slm_response="GPT answer")
+    row = dict(
+        _record(),
+        source_index=0,
+        oob_slm_response="Base answer",
+        fine_tuned_slm_response="Adapter answer",
+        gpt_slm_response="GPT answer",
+        gpt_inference_error="",
+        gpt_generated_token_count=3,
+        gpt_slm_latency_ms=100.0,
+        gpt_json_error="",
+    )
     for prefix in ("oob", "fine_tuned", "gpt"):
         row[f"{prefix}_response_is_valid_json"] = False
         row[f"{prefix}_output_reached_limit"] = False
@@ -51,6 +61,8 @@ def _inference_functions(**overrides):
         "context_text": context_text, "evaluate_rag_predictions": evaluate_rag_predictions,
         "RAG_METRICS": RAG_METRICS, "mlflow": Mock(), "tqdm": lambda items, **kwargs: items,
         "write_evaluation_manifest": write_evaluation_manifest,
+        "apply_llm_baseline": apply_llm_baseline,
+        "write_llm_baseline": write_llm_baseline,
         "ThreadPoolExecutor": ThreadPoolExecutor, "as_completed": as_completed,
         "torch": SimpleNamespace(inference_mode=nullcontext),
         "build_azure_openai_client": Mock(return_value=Mock()),
@@ -274,6 +286,7 @@ def _run_main(tmp_path, monkeypatch, judge):
     args = argparse.Namespace(
         model="base/model", fine_tuned_model="adapter", data=str(data),
         output=str(tmp_path / "output"), mode="both", max_seq_length=160,
+        workflow_mode="llm_baseline",
         max_input_tokens=128, max_new_tokens=32, inference_batch_size=1,
         max_records=None, sample_records=None, sample_seed=42,
         azure_client_id="client", hf_token="", load_in_4bit=False,
@@ -282,11 +295,12 @@ def _run_main(tmp_path, monkeypatch, judge):
         gpt_deployment="response-model", judge_deployment="independent-judge",
         gpt_max_workers=1, gpt_max_retries=1, storage_account_name="storage",
         finetuning_job_name="training-run",
+        gpt_baseline=None, llm_baseline_output=str(tmp_path / "baseline"),
     )
     return functions, args
 
 
-def test_final_csv_is_evaluated_and_logged_as_artifact(tmp_path, monkeypatch):
+def test_llm_baseline_mode_scores_only_gpt_and_writes_baseline(tmp_path, monkeypatch):
     functions, args = _run_main(tmp_path, monkeypatch, _scores)
     functions["main"](args)
     output = tmp_path / "output" / "test-run_predictions.csv"
@@ -294,17 +308,56 @@ def test_final_csv_is_evaluated_and_logged_as_artifact(tmp_path, monkeypatch):
     assert saved["cot_answer"][0] == _record()["cot_answer"]
     assert saved["evaluation_framework"][0] == "deepeval"
     assert saved["rag_judge_deployment"][0] == "independent-judge"
-    for prefix in ("oob", "fine_tuned", "gpt"):
-        for metric in RAG_METRICS:
-            assert saved[f"{prefix}_{metric}_score"][0] == 0.8
-            assert saved[f"{prefix}_{metric}_reason"][0]
+    for metric in RAG_METRICS:
+        assert saved[f"gpt_{metric}_score"][0] == 0.8
+        assert saved[f"gpt_{metric}_reason"][0]
+        assert f"oob_{metric}_score" not in saved
+        assert f"fine_tuned_{metric}_score" not in saved
     functions["mlflow"].log_artifact.assert_any_call(str(output))
     manifest_path = output.parent / "evaluation_evidence.json"
     functions["mlflow"].log_artifact.assert_any_call(str(manifest_path))
     assert json.loads(manifest_path.read_text(encoding="utf-8"))["training_job_name"] == "training-run"
     functions["upload_to_blobstore"].assert_called_once()
-    assert any(call.args[0].get("fine_tuned_correctness_avg") == 0.8
+    assert (tmp_path / "baseline" / "llm_baseline.csv").is_file()
+    assert any(call.args[0].get("gpt_correctness_avg") == 0.8
                for call in functions["mlflow"].log_metrics.call_args_list)
+
+
+def test_slm_evaluation_merges_baseline_and_scores_only_slms(tmp_path, monkeypatch):
+    judge = Mock(side_effect=_scores)
+    functions, args = _run_main(tmp_path, monkeypatch, judge)
+    data_path = Path(args.data) / "test.jsonl"
+    baseline_predictions = pd.DataFrame(
+        evaluate_rag_predictions([_wide_row()], _scores, model_prefixes=["gpt"])
+    )
+    baseline_dir = tmp_path / "cached-baseline"
+    write_llm_baseline(
+        baseline_predictions,
+        baseline_dir,
+        data_path,
+        gpt_deployment=args.gpt_deployment,
+        judge_deployment=args.judge_deployment,
+        gpt_api_version=args.gpt_api_version,
+        max_new_tokens=args.max_new_tokens,
+    )
+    args.workflow_mode = "slm_evaluation"
+    args.compare_with_gpt = False
+    args.gpt_baseline = str(baseline_dir)
+    args.llm_baseline_output = None
+
+    functions["main"](args)
+
+    saved = pd.read_csv(
+        tmp_path / "output" / "test-run_predictions.csv",
+        keep_default_na=False,
+    )
+    for prefix in ("oob", "fine_tuned", "gpt"):
+        for metric in RAG_METRICS:
+            assert saved[f"{prefix}_{metric}_score"][0] == 0.8
+    assert saved["gpt_slm_response"][0] == "GPT answer"
+    assert judge.call_count == 2
+    functions["call_gpt_with_retry"].assert_not_called()
+    assert not (tmp_path / "baseline" / "llm_baseline.csv").exists()
 
 
 def test_failed_evaluation_saves_csv_before_failing_job(tmp_path, monkeypatch):

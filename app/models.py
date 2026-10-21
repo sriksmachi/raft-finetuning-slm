@@ -1,4 +1,4 @@
-"""Validated demo action inputs; production inputs are deliberately unsupported."""
+"""Validated action inputs for isolated demo and production APIs."""
 
 from typing import Literal
 
@@ -14,6 +14,16 @@ class Preparation(Action):
     source_folder: str = Field(min_length=1, max_length=500)
     recipe: Literal["context-grounded", "context-assisted"]
     scenario: Literal["passing", "blocked", "failure"] = "passing"
+    num_samples: int = Field(default=240, ge=3, le=100000, strict=True)
+
+
+class ProductionPreparation(Action):
+    source_folder: str = Field(min_length=1, max_length=500)
+    recipe: Literal["context-grounded"] = "context-grounded"
+    num_samples: int = Field(default=240, ge=3, le=100000, strict=True)
+    num_questions: int = Field(default=5, ge=1, le=100, strict=True)
+    oracle_probability: float = Field(default=0.8, ge=0, le=1)
+    data_asset_name: str = Field(default="slm-studio-data", pattern=r"^[a-zA-Z][a-zA-Z0-9_-]{0,99}$")
 
 
 class Parameters(BaseModel):

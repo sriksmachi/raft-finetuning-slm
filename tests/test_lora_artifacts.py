@@ -10,6 +10,7 @@ import pytest
 
 from lib.lora_artifacts import (
     DEFAULT_ADAPTER_NAME,
+    adapter_name_from_model,
     load_lora_adapter,
     resolve_lora_adapter,
     save_lora_adapter,
@@ -49,6 +50,20 @@ def test_adapter_names(name):
 def test_invalid_adapter_names(name):
     with pytest.raises(ValueError, match="Adapter name"):
         validate_adapter_name(name)
+
+
+@pytest.mark.parametrize(
+    "model_name,expected",
+    [
+        ("Llama-3.2-3B-Instruct", "Llama-3_2-3B-Instruct-adapter"),
+        (
+            "meta-llama/Llama-3.1-8B-Instruct",
+            "Llama-3_1-8B-Instruct-adapter",
+        ),
+    ],
+)
+def test_adapter_name_is_derived_from_model_name(model_name, expected):
+    assert adapter_name_from_model(model_name) == expected
 
 
 def test_save_exports_only_named_adapter_and_tokenizer(tmp_path):

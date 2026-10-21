@@ -1,4 +1,6 @@
 import json
+import runpy
+import sys
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -7,6 +9,7 @@ import pytest
 from lib.data import (
     dataset_fingerprint,
     publish_data_asset,
+    validate_data_asset_version,
     validate_dataset,
     write_manifest,
 )
@@ -94,3 +97,32 @@ def test_publish_data_asset_uses_selected_datastore(tmp_path: Path) -> None:
 
     assert asset.datastore == "uploads"
     ml_client.data.create_or_update.assert_called_once_with(asset)
+
+
+@pytest.mark.parametrize("version", ["1", "20261021.201403", "a" * 30])
+def test_data_asset_version_accepts_azure_length_limit(version):
+    validate_data_asset_version(version)
+
+
+@pytest.mark.parametrize("version", ["", "a" * 31, "prod-" + "a" * 32])
+def test_publication_rejects_invalid_version_before_cloud_calls(tmp_path, version):
+    ml_client = Mock()
+    with pytest.raises(ValueError, match="1 to 30 characters"):
+        publish_data_asset(
+            ml_client, tmp_path, name="dataset", version=version, description="test",
+        )
+    ml_client.data.create_or_update.assert_not_called()
+
+
+@pytest.mark.parametrize("length", [30, 31, 37])
+def test_preparation_cli_validates_version_before_generation(monkeypatch, length, capsys):
+    script = Path(__file__).resolve().parents[1] / "scripts" / "01_prepare_data.py"
+    parse_args = runpy.run_path(str(script))["parse_args"]
+    monkeypatch.setattr(sys, "argv", [str(script), "--data-asset-version", "a" * length])
+    if length <= 30:
+        assert parse_args().data_asset_version == "a" * length
+    else:
+        with pytest.raises(SystemExit) as exc:
+            parse_args()
+        assert exc.value.code == 2
+        assert "1 to 30 characters" in capsys.readouterr().err

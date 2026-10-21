@@ -14,6 +14,7 @@ import torch
 import unsloth  # noqa: F401 - must preload before importing Transformers
 from datasets import load_dataset
 from transformers import (
+    AutoTokenizer,
     Trainer,
     TrainerCallback,
     TrainingArguments,
@@ -96,7 +97,7 @@ class ResponseOnlyDataCollator:
     ``padding_side``.
     """
 
-    def __init__(self, tokenizer, pad_to_multiple_of: int = 8):
+    def __init__(self, tokenizer, pad_to_multiple_of: int | None = 8):
         self.tokenizer = tokenizer
         self.pad_to_multiple_of = pad_to_multiple_of
 
@@ -172,15 +173,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=2e-5)
     parser.add_argument("--epochs", type=float, default=1.0)
     parser.add_argument("--batch-size", type=int, default=2)
-    parser.add_argument("--gradient-accumulation", type=int, default=16)
+    parser.add_argument(
+        "--gradient-accumulation-steps",
+        "--gradient-accumulation",
+        dest="gradient_accumulation",
+        type=int,
+        default=16,
+    )
     parser.add_argument("--chat-template", default="llama-3.2")
     parser.add_argument(
         "--load-in-4bit",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Load the base model in 4-bit precision (preserves prior BitsAndBytesConfig behavior).",
+        default=False,
+        help="Load the base model in 4-bit precision.",
     )
-    parser.add_argument("--lora-rank", type=int, default=8)
+    parser.add_argument("--lora-rank", type=int, default=16)
     parser.add_argument(
         "--lora-adapter-name", type=validate_adapter_name, default=DEFAULT_ADAPTER_NAME,
         help="Name of the final adapter directory inside --model-output.",
@@ -190,6 +197,61 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hf-token-secret-name")
     parser.add_argument("--managed-identity-client-id")
     return parser.parse_args()
+
+
+def record_messages(record: dict) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    prompt_messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt(record["instruction"])},
+    ]
+    return prompt_messages, prompt_messages + [
+        {"role": "assistant", "content": record["cot_answer"]}
+    ]
+
+
+def percentile_sequence_length(dataset, tokenizer, fallback: int) -> tuple[int, dict[str, object]]:
+    lengths: list[int] = []
+    split_lengths: dict[str, list[int]] = {}
+    for split in ("train", "validation"):
+        current = []
+        for record in dataset[split]:
+            _, full_messages = record_messages(record)
+            token_ids = tokenizer.apply_chat_template(
+                full_messages,
+                tokenize=True,
+                add_generation_prompt=False,
+                truncation=False,
+            )
+            current.append(len(token_ids))
+        split_lengths[split] = current
+        lengths.extend(current)
+
+    if not lengths:
+        log.warning(
+            "No token lengths were available; using fallback max_seq_length=%d",
+            fallback,
+        )
+        return fallback, {"fallback_used": True, "max_seq_length": fallback}
+
+    ordered = sorted(lengths)
+    percentile_index = max(0, math.ceil(0.95 * len(ordered)) - 1)
+    selected = max(1, ordered[percentile_index])
+    summary: dict[str, object] = {
+        "fallback_used": False,
+        "fallback_max_seq_length": fallback,
+        "records": len(ordered),
+        "p95_token_length": selected,
+        "minimum_token_length": ordered[0],
+        "median_token_length": statistics.median(ordered),
+        "maximum_token_length": ordered[-1],
+        "train_p95_token_length": sorted(split_lengths["train"])[
+            max(0, math.ceil(0.95 * len(split_lengths["train"])) - 1)
+        ],
+        "validation_p95_token_length": sorted(split_lengths["validation"])[
+            max(0, math.ceil(0.95 * len(split_lengths["validation"])) - 1)
+        ],
+    }
+    return selected, summary
 
 def main(args: argparse.Namespace) -> None:
     log.info(
@@ -211,12 +273,6 @@ def main(args: argparse.Namespace) -> None:
         args.max_seq_length,
         args.lora_rank,
     )
-    profile = training_profile(args, torch.cuda.is_bf16_supported())
-    log.info("Hardware-aware training profile: %s", profile)
-    if profile["precision"] == "fp16":
-        log.warning(
-            "bf16 is unavailable on this GPU; using fp16. This is expected for T4-class GPUs."
-        )
     set_seed(args.seed)
     if bool(args.key_vault_name) != bool(args.hf_token_secret_name):
         raise ValueError("Provide both Key Vault name and Hugging Face secret name")
@@ -294,8 +350,28 @@ def main(args: argparse.Namespace) -> None:
             )
 
     base_model_path = resolve_base_model(args.base_model)
+    tokenizer = AutoTokenizer.from_pretrained(base_model_path)
+    tokenizer.pad_token = tokenizer.pad_token or tokenizer.eos_token
+    tokenizer.padding_side = "right"
+    tokenizer = get_chat_template(tokenizer, chat_template=args.chat_template)
+    requested_max_seq_length = args.max_seq_length
+    args.max_seq_length, sequence_length_summary = percentile_sequence_length(
+        dataset, tokenizer, requested_max_seq_length
+    )
+    log.info(
+        "Selected max_seq_length=%d from chat-template tokenization: %s",
+        args.max_seq_length,
+        sequence_length_summary,
+    )
+    profile = training_profile(args, torch.cuda.is_bf16_supported())
+    log.info("Hardware-aware training profile: %s", profile)
+    if profile["precision"] == "fp16":
+        log.warning(
+            "bf16 is unavailable on this GPU; using fp16. This is expected for T4-class GPUs."
+        )
+
     log.info("Loading base model: %s", base_model_path)
-    model, tokenizer = FastLanguageModel.from_pretrained(
+    model, _ = FastLanguageModel.from_pretrained(
         model_name=base_model_path,
         max_seq_length=args.max_seq_length,
         dtype=DTYPE,
@@ -309,8 +385,6 @@ def main(args: argparse.Namespace) -> None:
 
     tokenizer.pad_token = tokenizer.pad_token or tokenizer.eos_token
     tokenizer.padding_side = "right"
-    tokenizer = get_chat_template(tokenizer, chat_template=args.chat_template)
-
     model = FastLanguageModel.get_peft_model(
         model,
         r=args.lora_rank,
@@ -328,13 +402,7 @@ def main(args: argparse.Namespace) -> None:
     log.info("Attached LoRA adapters: rank=%d, alpha=%d", args.lora_rank, 2 * args.lora_rank)
 
     def tokenize_record(record: dict) -> dict:
-        prompt_messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt(record["instruction"])},
-        ]
-        full_messages = prompt_messages + [
-            {"role": "assistant", "content": record["cot_answer"]}
-        ]
+        prompt_messages, full_messages = record_messages(record)
         prompt_ids = tokenizer.apply_chat_template(
             prompt_messages,
             tokenize=True,
@@ -468,6 +536,8 @@ def main(args: argparse.Namespace) -> None:
         )
         mlflow.log_metric("train_samples_count", len(dataset["train"]))
         mlflow.log_metric("validation_samples_count", len(dataset["validation"]))
+        mlflow.log_metric("max_seq_length_p95", args.max_seq_length)
+        mlflow.log_dict(sequence_length_summary, "sequence_length_selection.json")
         for split, summary in audit_summary.items():
             mlflow.log_dict(summary, f"{split}_tokenization_audit.json")
 
@@ -476,7 +546,9 @@ def main(args: argparse.Namespace) -> None:
             args=training_args,
             train_dataset=tokenized["train"],
             eval_dataset=tokenized["validation"],
-            data_collator=ResponseOnlyDataCollator(tokenizer=tokenizer),
+            data_collator=ResponseOnlyDataCollator(
+                tokenizer=tokenizer, pad_to_multiple_of=None
+            ),
             callbacks=[MlflowMetricsCallback()],
         )
         log.info("Starting training")

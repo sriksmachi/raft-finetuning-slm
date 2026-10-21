@@ -216,7 +216,7 @@ def add_chunk_to_dataset(
     global errors
     i = chunk_index
     rows: list[dict[str, Any]] = []
-    log.debug("Processing chunk %d/%d", i + 1, len(chunks))
+    log.info("Generating %d questions for chunk %d/%d", num_questions, i + 1, len(chunks))
     try:
         qs = generate_instructions_gen(chunk, num_questions)
     except Exception as e:
@@ -224,7 +224,8 @@ def add_chunk_to_dataset(
         errors.append(e)
         return rows
 
-    for q in qs:
+    for question_index, q in enumerate(qs, start=1):
+        log.info("Generating answer %d/%d for chunk %d", question_index, len(qs), i + 1)
         datapt = {
             "id": None,
             "type": None,
@@ -265,6 +266,7 @@ def add_chunk_to_dataset(
         context += "\n### Question:\n" + q 
         datapt["instruction"] = context
         rows.append(datapt)
+        log.info("Generated answer %d/%d for chunk %d", question_index, len(qs), i + 1)
 
     return rows
 
@@ -274,7 +276,14 @@ def generate_dataset(
     num_questions: int = 5,
     num_distract: int = DEFAULT_NUM_DISTRACTORS,
     p: float = DEFAULT_ORACLE_PROBABILITY,
-) -> None:
+    num_samples: int | None = None,
+) -> Dataset:
+    if num_questions < 1:
+        raise ValueError("num_questions must be positive")
+    if num_samples is not None and num_samples < 3:
+        raise ValueError("num_samples must be at least 3 for nonempty source-disjoint splits")
+    if num_samples is not None and len(set(chunks)) < 3:
+        raise ValueError("At least 3 distinct source chunks are required")
     global ds, errors
     errors = []
     ds = Dataset.from_dict({})
@@ -287,18 +296,32 @@ def generate_dataset(
         p,
     )
     rows: list[dict[str, Any]] = []
-    for chunk_index, chunk in enumerate(tqdm(chunks, desc="Processing chunks")):
+    generation_chunks = chunks if num_samples is None else list(dict.fromkeys(chunks))
+    group_count = len(generation_chunks) if num_samples is None else min(len(generation_chunks), num_samples)
+    for chunk_index, chunk in enumerate(tqdm(generation_chunks[:group_count], desc="Processing chunks")):
+        question_count = num_questions if num_samples is None else (
+            num_samples // group_count + (chunk_index < num_samples % group_count)
+        )
         try:
-            rows.extend(
-                add_chunk_to_dataset(
-                    chunks,
+            remaining = question_count
+            while remaining:
+                batch_size = min(remaining, num_questions)
+                generated = add_chunk_to_dataset(
+                    generation_chunks,
                     chunk,
                     chunk_index,
-                    num_questions,
+                    batch_size,
                     num_distract,
                     p,
                 )
-            )
+                if num_samples is not None and (
+                    len(generated) != batch_size
+                    or any(not row.get("cot_answer") for row in generated)
+                ):
+                    raise RuntimeError("Generation returned fewer valid samples than requested")
+                rows.extend(generated)
+                log.info("Generated samples: %d/%s", len(rows), num_samples or "unbounded")
+                remaining -= batch_size
         except Exception as e:
             errors.append(e)
             log.error(
@@ -307,12 +330,17 @@ def generate_dataset(
                 e,
                 exc_info=True,
             )
+            if num_samples is not None:
+                raise RuntimeError("Unable to generate the requested sample count") from e
             break
 
     ds = Dataset.from_list(rows) if rows else Dataset.from_dict({})
 
     log.info("Dataset generation complete. Errors: %d/%d. Examples: %d",
              len(errors), len(chunks), len(ds) if ds else 0)
+    if num_samples is not None and (errors or len(ds) != num_samples):
+        raise RuntimeError(f"Requested {num_samples} samples but generated {len(ds)}; errors: {len(errors)}")
+    return ds
 
 # ---------------------------------------------------------------------------
 # 3. Split and save
@@ -325,8 +353,10 @@ def save_datasets(training_df, output_dir: str = "./data/training_data_raft") ->
     source_groups = training_df["oracle_context"].drop_duplicates().sample(
         frac=1, random_state=42
     )
-    train_end = int(.8 * len(source_groups))
-    validation_end = int(.9 * len(source_groups))
+    if len(source_groups) < 3:
+        raise ValueError("At least 3 distinct source chunks are required for nonempty splits")
+    train_end = min(max(1, int(.8 * len(source_groups))), len(source_groups) - 2)
+    validation_end = min(max(train_end + 1, int(.9 * len(source_groups))), len(source_groups) - 1)
     train_sources = set(source_groups.iloc[:train_end])
     validation_sources = set(source_groups.iloc[train_end:validation_end])
     test_sources = set(source_groups.iloc[validation_end:])

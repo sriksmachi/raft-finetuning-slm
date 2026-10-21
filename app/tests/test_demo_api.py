@@ -144,6 +144,30 @@ def test_header_presents_product_tagline():
     ) in html
 
 
+def test_requested_demo_sample_count_remains_consistent(studio):
+    client, _ = studio
+    response = client.post("/api/runs", json={
+        "source_folder": "demo-label", "recipe": "context-grounded",
+        "num_samples": 7, "confirmed": True,
+    })
+    assert response.status_code == 200
+    run_id = response.json()["run_id"]
+    record = wait(client, run_id, "data_preparation")
+    assert record["data_card"]["record_count"] == 7
+    assert sum(record["data_card"]["split_counts"].values()) == 7
+    assert record["data_card"]["validation"]["checked_records"] == 7
+    assert record["data_card"]["samples"]
+    assert client.post(f"/api/runs/{run_id}/training", json={
+        "confirmed": True, **Parameters().model_dump(),
+    }).status_code == 200
+    wait(client, run_id, "training")
+    assert client.post(f"/api/runs/{run_id}/evaluation", json={"confirmed": True}).status_code == 200
+    record = wait(client, run_id, "evaluation")
+    assert all(row["sample_count"] == record["data_card"]["split_counts"]["test"]
+               for row in record["evaluation"]["models"])
+    assert client.post(f"/api/runs/{run_id}/register", json={"confirmed": True}).status_code == 200
+
+
 def test_isolation_and_no_source_reads(studio, tmp_path, monkeypatch):
     client, store = studio
     sentinel = tmp_path / "production.yaml"

@@ -12,6 +12,11 @@ def validate_adapter_name(name: str) -> str:
     return name
 
 
+def adapter_name_from_model(model_name: str) -> str:
+    normalized = model_name.rstrip("/\\").split("/")[-1].replace(".", "_")
+    return validate_adapter_name(f"{normalized}-adapter")
+
+
 def resolve_lora_adapter(artifact_path: str | Path) -> Path:
     root = Path(artifact_path)
     if not root.is_dir():

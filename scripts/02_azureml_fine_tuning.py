@@ -48,9 +48,22 @@ from lib.azureml_ops import (
     submit_finetuning_job,
 )
 from lib.config import AzureMLConfig
+from lib.lora_artifacts import adapter_name_from_model
 from lib.run_registry import record_run
 
 log = logging.getLogger("azureml_fine_tuning")
+
+
+def chat_template_for_model(model_name: str) -> str:
+    normalized = model_name.lower().replace("_", "-")
+    if "llama-3.1" in normalized:
+        return "llama-3.1"
+    if "llama-3.2" in normalized:
+        return "llama-3.2"
+    raise ValueError(
+        "Could not infer an Unsloth chat template from the selected model. "
+        "Pass --chat-template explicitly."
+    )
 
 
 def configure_console_encoding() -> None:
@@ -105,19 +118,33 @@ def parse_args() -> argparse.Namespace:
         help="Overrides AZURE_TRAIN_ENVIRONMENT_VERSION in .env; successful version bumps are persisted there.",
     )
     parser.add_argument("--experiment-name", default="slm-studio-finetuning")
-    # Optional train.py overrides (forwarded only if explicitly set).
-    parser.add_argument("--max-seq-length", type=int, default=None)
+    # Training configuration.
+    parser.add_argument(
+        "--max-seq-length",
+        type=int,
+        default=2048,
+        help=(
+            "Fallback sequence length. The training job replaces this with the "
+            "95th-percentile length after applying the selected chat template."
+        ),
+    )
     parser.add_argument("--chat-template", default=None)
     parser.add_argument(
-        "--load-in-4bit", action=argparse.BooleanOptionalAction, default=None
+        "--load-in-4bit", action=argparse.BooleanOptionalAction, default=False
     )
-    parser.add_argument("--lora-rank", type=int, default=None)
+    parser.add_argument("--lora-rank", type=int, default=16)
     parser.add_argument("--lora-adapter-name", default=None)
-    parser.add_argument("--learning-rate", type=float, default=None)
-    parser.add_argument("--epochs", type=float, default=None)
-    parser.add_argument("--batch-size", type=int, default=None)
-    parser.add_argument("--gradient-accumulation", type=int, default=None)
-    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--learning-rate", type=float, default=2e-5)
+    parser.add_argument("--epochs", type=float, default=1)
+    parser.add_argument("--batch-size", type=int, default=2)
+    parser.add_argument(
+        "--gradient-accumulation-steps",
+        "--gradient-accumulation",
+        dest="gradient_accumulation",
+        type=int,
+        default=16,
+    )
+    parser.add_argument("--seed", type=int, default=42)
 
     # Phase control.
     parser.add_argument(
@@ -163,6 +190,16 @@ def submit_training(ml_client, args: argparse.Namespace, environment_id: str):
                 "in the environment when --base-model-source=huggingface"
             )
 
+    selected_model_name = (
+        args.base_model_name
+        if args.base_model_source == "foundry"
+        else args.hf_base_model
+    )
+    chat_template = args.chat_template or chat_template_for_model(selected_model_name)
+    lora_adapter_name = (
+        args.lora_adapter_name or adapter_name_from_model(selected_model_name)
+    )
+
     # Reuse a pre-warmed credential to avoid interactive-browser fallback stalls inside the helper.
     credential = DefaultAzureCredential(exclude_interactive_browser_credential=True)
     log.info("Resolving base model...")
@@ -183,10 +220,10 @@ def submit_training(ml_client, args: argparse.Namespace, environment_id: str):
         managed_identity_client_id=args.managed_identity_client_id,
         credential=credential,
         max_seq_length=args.max_seq_length,
-        chat_template=args.chat_template,
+        chat_template=chat_template,
         load_in_4bit=args.load_in_4bit,
         lora_rank=args.lora_rank,
-        lora_adapter_name=args.lora_adapter_name,
+        lora_adapter_name=lora_adapter_name,
         learning_rate=args.learning_rate,
         epochs=args.epochs,
         batch_size=args.batch_size,

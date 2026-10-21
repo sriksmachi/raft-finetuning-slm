@@ -15,6 +15,7 @@ from azure.identity import ManagedIdentityCredential, get_bearer_token_provider
 from azure.storage.blob import BlobServiceClient
 from evaluation import RAG_METRICS, context_text, evaluate_rag_predictions
 from lora_artifacts import load_lora_adapter, resolve_lora_adapter
+from llm_baseline import apply_llm_baseline, write_llm_baseline
 from prompts import question_context_messages
 from release import write_evaluation_manifest
 from tqdm import tqdm
@@ -168,6 +169,11 @@ def parse_args():
     )
     parser.add_argument("--finetuning-job-name", default=None)
     parser.add_argument(
+        "--workflow-mode",
+        choices=["llm_baseline", "slm_evaluation"],
+        required=True,
+    )
+    parser.add_argument(
         "--mode",
         type=str,
         default="both",
@@ -182,7 +188,7 @@ def parse_args():
     parser.add_argument(
         "--inference-batch-size",
         type=int,
-        default=4,
+        default=2,
         help="Number of similar-length prompts generated together",
     )
     parser.add_argument(
@@ -223,6 +229,16 @@ def parse_args():
         help="Concurrent Azure OpenAI requests for the GPT comparison pass",
     )
     parser.add_argument("--gpt-max-retries", type=int, default=4)
+    parser.add_argument(
+        "--gpt-baseline",
+        default=None,
+        help="Mounted llm_baseline_dataset asset. Reuses cached GPT responses and scores.",
+    )
+    parser.add_argument(
+        "--llm-baseline-output",
+        default=None,
+        help="Registered output directory for a newly generated GPT baseline.",
+    )
     return parser.parse_args()
 
 
@@ -627,7 +643,9 @@ def generate_predictions(
         prepared_records.append((sample_index, prompt_messages))
 
     modes = (
-        ["oob", "fine-tuned"]
+        []
+        if inference_mode == "none"
+        else ["oob", "fine-tuned"]
         if inference_mode == "both"
         else [inference_mode]
     )
@@ -1068,8 +1086,28 @@ def main(args: argparse.Namespace):
             "Use either --max-records for the first N records or "
             "--sample-records for a random N records, not both"
         )
-    if args.compare_with_gpt and not args.gpt_endpoint:
-        raise ValueError("--gpt-endpoint is required when --compare-with-gpt is set")
+    gpt_baseline = getattr(args, "gpt_baseline", None)
+    llm_baseline_output = getattr(args, "llm_baseline_output", None)
+    if args.workflow_mode == "llm_baseline":
+        if not args.compare_with_gpt or gpt_baseline:
+            raise ValueError(
+                "llm_baseline requires GPT generation and cannot consume a baseline"
+            )
+        if not llm_baseline_output:
+            raise ValueError("llm_baseline requires --llm-baseline-output")
+    elif args.workflow_mode == "slm_evaluation":
+        if args.compare_with_gpt or not gpt_baseline:
+            raise ValueError(
+                "slm_evaluation requires --gpt-baseline and must not generate GPT"
+            )
+        if not args.fine_tuned_model:
+            raise ValueError("slm_evaluation requires --fine-tuned-model")
+    if args.compare_with_gpt and gpt_baseline:
+        raise ValueError("Use either --compare-with-gpt or --gpt-baseline, not both")
+    if (args.compare_with_gpt or gpt_baseline) and not args.gpt_endpoint:
+        raise ValueError(
+            "--gpt-endpoint is required for GPT generation or RAG judging"
+        )
 
     # print installed packages
     if args.log_packages:
@@ -1084,43 +1122,30 @@ def main(args: argparse.Namespace):
     # TODO: Move HF token to Azure Key Vault
     os.environ["HF_TOKEN"] = args.hf_token
     az_client = get_az_client(args.azure_client_id)
-    model = None
-    tokenizer = None
+    model = tokenizer = fine_tuned_model = fine_tuned_tokenizer = None
     try:
-        log.info("Downloading model: %s", Path(args.model))
-        model, tokenizer, fine_tuned_model, fine_tuned_tokenizer = download_model(
-            model_name=Path(args.model),
-            fine_tuned_model_path=(
-                Path(args.fine_tuned_model) if args.fine_tuned_model else None
-            ),
-            mode=args.mode,
-            max_seq_length=args.max_seq_length,
-            load_in_4bit=args.load_in_4bit,
-            dtype=DTYPE,
-        )
-        log.info("Model loaded successfully: %s", args.model)
-        loaded_models = [("oob", model)] if model is not None else []
-        if fine_tuned_model is not None:
-            loaded_models.append(("fine-tuned", fine_tuned_model))
-        for loaded_model_name, loaded_model in loaded_models:
-            loaded_context = getattr(
-                loaded_model,
-                "max_seq_length",
-                None,
+        if args.workflow_mode == "llm_baseline":
+            log.info("Skipping SLM model loading in llm_baseline mode")
+        else:
+            log.info("Downloading model: %s", Path(args.model))
+            model, tokenizer, fine_tuned_model, fine_tuned_tokenizer = download_model(
+                model_name=Path(args.model),
+                fine_tuned_model_path=Path(args.fine_tuned_model),
+                mode="both",
+                max_seq_length=args.max_seq_length,
+                load_in_4bit=args.load_in_4bit,
+                dtype=DTYPE,
             )
-            log.info(
-                "%s model max_seq_length=%s",
-                loaded_model_name,
-                loaded_context,
-            )
-            if (
-                loaded_context is not None
-                and loaded_context != args.max_seq_length
-            ):
-                raise ValueError(
-                    f"{loaded_model_name} model context mismatch: requested "
-                    f"{args.max_seq_length}, loaded {loaded_context}"
-                )
+            log.info("Model loaded successfully: %s", args.model)
+            loaded_models = [("oob", model), ("fine-tuned", fine_tuned_model)]
+            for loaded_model_name, loaded_model in loaded_models:
+                loaded_context = getattr(loaded_model, "max_seq_length", None)
+                log.info("%s model max_seq_length=%s", loaded_model_name, loaded_context)
+                if loaded_context is not None and loaded_context != args.max_seq_length:
+                    raise ValueError(
+                        f"{loaded_model_name} model context mismatch: requested "
+                        f"{args.max_seq_length}, loaded {loaded_context}"
+                    )
         log.info(
             "Configured token budget: context=%d, input=%d, output=%d, "
             "unused_buffer=%d",
@@ -1151,7 +1176,7 @@ def main(args: argparse.Namespace):
         sample_seed=args.sample_seed,
     )
     log.info("Loaded %s records for inference", len(records))
-    if args.analyze_token_lengths:
+    if args.analyze_token_lengths and tokenizer is not None:
         splits = ["train", "test", "validation"]
         for split in splits:
             token_lengths = get_token_lengths(
@@ -1173,7 +1198,9 @@ def main(args: argparse.Namespace):
         max_input_tokens=args.max_input_tokens,
         max_new_tokens=args.max_new_tokens,
         max_seq_length=args.max_seq_length,
-        inference_mode=args.mode,
+        inference_mode=(
+            "none" if args.workflow_mode == "llm_baseline" else "both"
+        ),
         inference_batch_size=args.inference_batch_size,
         compare_with_gpt=args.compare_with_gpt,
         az_client=az_client,
@@ -1183,17 +1210,35 @@ def main(args: argparse.Namespace):
         gpt_max_workers=args.gpt_max_workers,
         gpt_max_retries=args.gpt_max_retries,
     )
+    if gpt_baseline:
+        predictions, baseline_manifest = apply_llm_baseline(
+            predictions, gpt_baseline, data_path / "test.jsonl"
+        )
+        requested_judge = args.judge_deployment or args.gpt_deployment
+        if baseline_manifest["judge_deployment"] != requested_judge:
+            raise ValueError(
+                "GPT baseline judge deployment does not match this evaluation: "
+                f"{baseline_manifest['judge_deployment']!r} != {requested_judge!r}"
+            )
+        log.info(
+            "Reused GPT baseline with %d records generated by deployment=%s",
+            baseline_manifest["record_count"],
+            baseline_manifest["gpt_deployment"],
+        )
 
     evaluated_modes = (
-        ["oob", "fine_tuned"]
-        if args.mode == "both"
-        else [args.mode.replace("-", "_")]
+        [] if args.workflow_mode == "llm_baseline" else ["oob", "fine_tuned"]
     )
-    if args.compare_with_gpt:
-        evaluated_modes.append("gpt")
+    has_gpt_evidence = bool(args.compare_with_gpt or gpt_baseline)
+    reported_modes = list(evaluated_modes)
+    if has_gpt_evidence:
+        reported_modes.append("gpt")
         judge_client = build_azure_openai_client(args.gpt_endpoint, args.gpt_api_version, az_client)
         judge_deployment = args.judge_deployment or args.gpt_deployment
-        log.info("Evaluating %s responses with RAG judge deployment=%s", evaluated_modes, judge_deployment)
+        modes_to_judge = list(evaluated_modes)
+        if args.compare_with_gpt:
+            modes_to_judge.append("gpt")
+        log.info("Evaluating %s responses with RAG judge deployment=%s", modes_to_judge, judge_deployment)
 
         from deepeval_metrics import build_deepeval_judge
 
@@ -1214,12 +1259,12 @@ def main(args: argparse.Namespace):
         predictions = pd.DataFrame(evaluate_rag_predictions(
             predictions.to_dict("records"),
             build_deepeval_judge(completion, judge_deployment),
-            model_prefixes=evaluated_modes,
+            model_prefixes=modes_to_judge,
         ))
         predictions["rag_judge_deployment"] = judge_deployment
         predictions["evaluation_framework"] = "deepeval"
     json_quality_metrics = {}
-    for mode_prefix in evaluated_modes:
+    for mode_prefix in reported_modes:
         valid_column = f"{mode_prefix}_response_is_valid_json"
         response_column = f"{mode_prefix}_slm_response"
         output_limit_column = f"{mode_prefix}_output_reached_limit"
@@ -1300,10 +1345,10 @@ def main(args: argparse.Namespace):
     mlflow.log_params(logged_parameters)
     mlflow.log_param("run_id", run_id)
     mlflow.log_metrics(json_quality_metrics)
-    if args.compare_with_gpt:
+    if has_gpt_evidence:
         error_counts = {
             f"{prefix}_rag_error_count": int(predictions[f"{prefix}_rag_error"].ne("").sum())
-            for prefix in evaluated_modes
+            for prefix in reported_modes
         }
         mlflow.log_metrics(error_counts)
         if any(error_counts.values()):
@@ -1311,9 +1356,24 @@ def main(args: argparse.Namespace):
                 f"Incomplete RAG evaluation: {error_counts}. "
                 f"Responses, scores, reasons, and errors were saved to {output_file}."
             )
+        if args.compare_with_gpt and llm_baseline_output:
+            baseline_file, baseline_manifest = write_llm_baseline(
+                predictions,
+                llm_baseline_output,
+                data_path / "test.jsonl",
+                gpt_deployment=args.gpt_deployment,
+                judge_deployment=args.judge_deployment or args.gpt_deployment,
+                gpt_api_version=args.gpt_api_version,
+                max_new_tokens=args.max_new_tokens,
+            )
+            log.info(
+                "Saved reusable GPT baseline to %s with manifest %s",
+                baseline_file,
+                baseline_manifest,
+            )
         mlflow.log_metrics({
             f"{prefix}_{metric}_avg": float(predictions[f"{prefix}_{metric}_score"].mean())
-            for prefix in evaluated_modes for metric in RAG_METRICS
+            for prefix in reported_modes for metric in RAG_METRICS
         })
     for latency_column in [
         "oob_slm_latency_ms",

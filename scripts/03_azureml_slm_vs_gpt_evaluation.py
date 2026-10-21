@@ -13,6 +13,11 @@ the job's MLflow run -- which is how they become visible as Azure ML job metrics
 The output also contains a hash-bound evidence manifest consumed by
 ``scripts/04_release_candidate.py``.
 
+The first run for a test dataset registers GPT responses, diagnostics, latency,
+and scores as a timestamped ``llm_baseline_dataset`` version. Pass that version
+through ``--llm-baseline-data-asset-version`` on later runs to validate and
+reuse the GPT evidence without generating or judging the baseline again.
+
 ``--finetuning-job-name`` is optional: every training job submitted by
 ``scripts/02_azureml_fine_tuning.py`` is recorded as a YAML file under
 ``runs/`` (see ``lib/run_registry.py``), and if the flag is omitted this
@@ -20,18 +25,21 @@ script evaluates the most recently submitted run for
 ``--training-experiment-name`` instead.
 
 Typical sequence:
-    1. python scripts/02_azureml_fine_tuning.py --wait   # trains, records the run under runs/
-    2. python scripts/03_azureml_slm_vs_gpt_evaluation.py --gpt-endpoint <endpoint> --wait  # evaluates the latest run
-    3. python scripts/04_release_candidate.py ...  # attest, approve, register, deploy at zero traffic
+    1. python scripts/03_azureml_slm_vs_gpt_evaluation.py --mode llm_baseline --wait
+    2. python scripts/02_azureml_fine_tuning.py --wait
+    3. python scripts/03_azureml_slm_vs_gpt_evaluation.py --mode slm_evaluation \
+           --llm-baseline-data-asset-version <version> --wait
+    4. python scripts/04_release_candidate.py ...
 
 Examples:
-    # Evaluate the most recently submitted training run.
+    # Generate the immutable GPT baseline once.
     python scripts/03_azureml_slm_vs_gpt_evaluation.py \\
-        --gpt-endpoint https://<resource>.openai.azure.com
+        --mode llm_baseline --wait
 
-    # Evaluate a specific training job and block until the job finishes.
+    # Evaluate a specific training job against the cached baseline.
     python scripts/03_azureml_slm_vs_gpt_evaluation.py \\
-        --finetuning-job-name <job name> --gpt-endpoint <endpoint> --wait
+        --mode slm_evaluation --finetuning-job-name <job name> \\
+        --llm-baseline-data-asset-version <version> --wait
 """
 
 from __future__ import annotations
@@ -60,6 +68,16 @@ log = logging.getLogger("azureml_slm_vs_gpt_evaluation")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--mode",
+        choices=["llm_baseline", "slm_evaluation"],
+        required=True,
+        help=(
+            "llm_baseline generates and registers GPT answers/scores only; "
+            "slm_evaluation runs OOB and fine-tuned SLM inference, merges an "
+            "existing baseline version, and writes final evaluation evidence."
+        ),
+    )
 
     parser.add_argument(
         "--finetuning-job-name",
@@ -97,7 +115,14 @@ def parse_args() -> argparse.Namespace:
         "--managed-identity-client-id",
         default="39793817-16f4-45f9-8181-b8e198144c49",
     )
-    parser.add_argument("--storage-account-name", required=True)
+    parser.add_argument(
+        "--storage-account-name",
+        default=None,
+        help=(
+            "Storage account for the compatibility predictions upload. Defaults "
+            "to the account backing the Azure ML workspace's default datastore."
+        ),
+    )
 
     parser.add_argument("--inference-environment-name", default="slm-studio-inference")
     parser.add_argument("--inference-environment-version", default="2")
@@ -110,17 +135,41 @@ def parse_args() -> argparse.Namespace:
     # GPT comparison.
     parser.add_argument(
         "--gpt-endpoint",
-        required=True,
-        help="Azure OpenAI / Azure AI Foundry endpoint to compare the fine-tuned SLM against.",
+        default=os.environ.get("AZURE_OPENAI_ENDPOINT"),
+        help="Azure OpenAI / Azure AI Foundry endpoint used for GPT generation "
+        "and for judging new SLM responses. Defaults to AZURE_OPENAI_ENDPOINT.",
     )
-    parser.add_argument("--gpt-deployment", default="gpt-4.1")
+    parser.add_argument(
+        "--gpt-deployment",
+        default=os.environ.get("AZURE_OPENAI_GPT_DEPLOYMENT", "gpt-4.1"),
+        help="Defaults to AZURE_OPENAI_GPT_DEPLOYMENT, then gpt-4.1.",
+    )
     parser.add_argument(
         "--judge-deployment", default=None,
         help="Separate RAG judge deployment on --gpt-endpoint; defaults to --gpt-deployment.",
     )
-    parser.add_argument("--gpt-api-version", default="2024-10-21")
+    parser.add_argument(
+        "--gpt-api-version",
+        default=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21"),
+        help="Defaults to AZURE_OPENAI_API_VERSION, then 2024-10-21.",
+    )
     parser.add_argument("--gpt-max-workers", type=int, default=16)
     parser.add_argument("--gpt-max-retries", type=int, default=4)
+    parser.add_argument(
+        "--llm-baseline-data-asset-name",
+        default="llm_baseline_dataset",
+        help="Azure ML data asset used to register or retrieve cached GPT evidence.",
+    )
+    parser.add_argument(
+        "--llm-baseline-data-asset-version",
+        "--llm-baseline-version",
+        dest="llm_baseline_data_asset_version",
+        default=None,
+        help=(
+            "Immutable baseline version required by --mode slm_evaluation. "
+            "Do not provide it with --mode llm_baseline."
+        ),
+    )
 
     # Optional inference.py overrides (forwarded only if explicitly set).
     parser.add_argument("--max-new-tokens", type=int, default=None)
@@ -144,6 +193,24 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--log-level", default="INFO")
     return parser.parse_args()
+
+
+def resolve_storage_account_name(ml_client, configured_name: str | None) -> str:
+    if configured_name:
+        return configured_name
+    datastore = ml_client.datastores.get_default()
+    account_name = getattr(datastore, "account_name", None)
+    if not isinstance(account_name, str) or not account_name.strip():
+        raise ValueError(
+            "The Azure ML workspace default datastore does not expose a storage "
+            "account name. Pass --storage-account-name explicitly."
+        )
+    log.info(
+        "Using storage account %s from default datastore %s",
+        account_name,
+        datastore.name,
+    )
+    return account_name
 
 
 def resolve_hf_token(args: argparse.Namespace) -> str:
@@ -201,10 +268,44 @@ def main() -> int:
     config = AzureMLConfig.from_env()
     credential = config.create_credential()
     ml_client = config.create_ml_client(credential=credential)
+    if not args.gpt_endpoint:
+        raise ValueError(
+            "Set AZURE_OPENAI_ENDPOINT in .env or pass --gpt-endpoint."
+        )
+    storage_account_name = resolve_storage_account_name(
+        ml_client, args.storage_account_name
+    )
     test_data_asset = ml_client.data.get(
         args.test_data_asset_name, version=args.test_data_asset_version
     )
     log.info("Test data input: %s", test_data_asset.id)
+    baseline_asset = None
+    baseline_output_version = None
+    if args.mode == "slm_evaluation":
+        if not args.llm_baseline_data_asset_version:
+            raise ValueError(
+                "--llm-baseline-data-asset-version is required with "
+                "--mode slm_evaluation"
+            )
+        baseline_asset = ml_client.data.get(
+            args.llm_baseline_data_asset_name,
+            version=args.llm_baseline_data_asset_version,
+        )
+        log.info("Reusing GPT baseline input: %s", baseline_asset.id)
+    else:
+        if args.llm_baseline_data_asset_version:
+            raise ValueError(
+                "Do not pass --llm-baseline-data-asset-version with "
+                "--mode llm_baseline; this mode creates a new version"
+            )
+        baseline_output_version = datetime.now(timezone.utc).strftime(
+            "%Y%m%d.%H%M%S"
+        )
+        log.info(
+            "Generating GPT baseline output %s:%s",
+            args.llm_baseline_data_asset_name,
+            baseline_output_version,
+        )
     log.info("Compute: %s", ml_client.compute.get(args.compute_name).name)
 
     if not args.skip_environment:
@@ -222,10 +323,10 @@ def main() -> int:
     base_model_arg = (
         args.base_model_name if args.base_model_source == "foundry" else args.hf_base_model
     )
-    hf_token = resolve_hf_token(args)
+    hf_token = resolve_hf_token(args) if args.mode == "slm_evaluation" else ""
 
     finetuning_job_name = args.finetuning_job_name
-    if not finetuning_job_name:
+    if args.mode == "slm_evaluation" and not finetuning_job_name:
         record = latest_run(experiment_name=args.training_experiment_name)
         if not record:
             raise RuntimeError(
@@ -250,19 +351,25 @@ def main() -> int:
         base_model=base_model_arg,
         display_name=args.display_name,
         finetuning_job_name=finetuning_job_name,
-        storage_account_name=args.storage_account_name,
+        storage_account_name=storage_account_name,
         managed_identity_client_id=args.managed_identity_client_id,
         base_model_source=args.base_model_source,
         base_model_registry=args.base_model_registry,
         base_model_label=args.base_model_label,
         mode="both",
-        compare_with_gpt=True,
+        workflow_mode=args.mode,
+        compare_with_gpt=args.mode == "llm_baseline",
         gpt_endpoint=args.gpt_endpoint,
         gpt_deployment=args.gpt_deployment,
         judge_deployment=args.judge_deployment,
         gpt_api_version=args.gpt_api_version,
         gpt_max_workers=args.gpt_max_workers,
         gpt_max_retries=args.gpt_max_retries,
+        gpt_baseline_asset=baseline_asset.id if baseline_asset else None,
+        llm_baseline_output_name=(
+            args.llm_baseline_data_asset_name if baseline_asset is None else None
+        ),
+        llm_baseline_output_version=baseline_output_version,
         max_new_tokens=args.max_new_tokens,
         max_seq_length=args.max_seq_length,
         max_input_tokens=args.max_input_tokens,
@@ -274,22 +381,41 @@ def main() -> int:
         credential=credential,
     )
     log.info("Job name: %s", submitted_job.name)
-    record_run(
-        finetuning_job_name,
-        evaluation_job_name=submitted_job.name,
-        evaluation_environment=environment_id,
-        evaluation_submitted_at=datetime.now(timezone.utc).isoformat(),
-    )
+    if baseline_asset is None:
+        log.info(
+            "GPT baseline will be registered as %s:%s when the job succeeds",
+            args.llm_baseline_data_asset_name,
+            baseline_output_version,
+        )
+    if finetuning_job_name:
+        record_run(
+            finetuning_job_name,
+            evaluation_job_name=submitted_job.name,
+            evaluation_environment=environment_id,
+            evaluation_submitted_at=datetime.now(timezone.utc).isoformat(),
+            llm_baseline_data_asset=(
+                f"{args.llm_baseline_data_asset_name}:"
+                f"{args.llm_baseline_data_asset_version}"
+            ),
+            llm_baseline_reused=True,
+        )
 
     if args.wait:
         log.info("Waiting for job %s to complete...", submitted_job.name)
         ml_client.jobs.stream(submitted_job.name)
         print_job_metrics(config, ml_client, submitted_job.name)
     else:
+        baseline_action = (
+            f"reuse {args.llm_baseline_data_asset_name}:"
+            f"{args.llm_baseline_data_asset_version}"
+            if args.mode == "slm_evaluation"
+            else f"register {args.llm_baseline_data_asset_name}:{baseline_output_version}"
+        )
         log.info(
-            "Job submitted asynchronously. Per-model RAG scores/reasons will be saved "
-            "in the final predictions CSV; RAG means and latency for all three models "
-            "will appear in Azure ML / MLflow experiment '%s' once it completes.",
+            "Job submitted asynchronously and will %s. Per-model RAG evidence "
+            "will be saved in the final predictions CSV and logged to Azure ML / "
+            "MLflow experiment '%s'.",
+            baseline_action,
             args.experiment_name,
         )
 

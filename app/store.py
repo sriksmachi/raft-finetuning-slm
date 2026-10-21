@@ -19,21 +19,23 @@ class StoreError(Exception):
     pass
 
 
-def validate_id(run_id: str) -> None:
-    if not ID_PATTERN.fullmatch(run_id):
+def validate_id(run_id: str, mode: str = "demo") -> None:
+    pattern = ID_PATTERN if mode == "demo" else re.compile(r"prod-[A-Za-z0-9][A-Za-z0-9_-]{0,79}\Z")
+    if not pattern.fullmatch(run_id):
         raise ValueError("Invalid demo run ID; expected demo- followed by safe letters, numbers, hyphens or underscores.")
 
 
 class DemoStore:
-    def __init__(self, directory: Path):
+    def __init__(self, directory: Path, mode: str = "demo"):
+        self.mode = mode
         self.directory = directory.resolve()
         self.directory.mkdir(parents=True, exist_ok=True)
-        if not any(self.directory.iterdir()):
+        if mode == "demo" and not any(self.directory.iterdir()):
             for record in seed_records():
                 self.save(record)
 
     def path(self, run_id: str) -> Path:
-        validate_id(run_id)
+        validate_id(run_id, self.mode)
         path = self.directory / f"{run_id}.yaml"
         if path.is_symlink():
             raise StoreError("Symlink run records are not supported.")
@@ -47,7 +49,7 @@ class DemoStore:
             record = yaml.safe_load(path.read_text(encoding="utf-8"))
             if not isinstance(record, dict) or record.get("run_id") != run_id:
                 raise ValueError("Run ID does not match filename.")
-            if record.get("mode") != "demo" or record.get("simulated") is not True or record.get("schema_version") != 1:
+            if record.get("mode") != self.mode or record.get("simulated") is not (self.mode == "demo") or record.get("schema_version") != 1:
                 raise ValueError("Only schema version 1 simulated demo records are supported.")
             if record.get("status") not in {"running", "ready", "failed", "completed"}:
                 raise ValueError("Invalid run status.")
@@ -91,13 +93,13 @@ class DemoStore:
             return record
         except (OSError, yaml.YAMLError, ValueError, KeyError, TypeError, AttributeError) as exc:
             logger.exception("Unable to read demo run %s", run_id)
-            raise StoreError(f"Corrupted or unreadable demo record {run_id}: {exc}") from exc
+            raise StoreError(f"Corrupted or unreadable {self.mode} record {run_id}: {exc}") from exc
 
     def list(self) -> list[dict]:
         records = []
         for path in self.directory.glob("*.yaml"):
             try:
-                validate_id(path.stem)
+                validate_id(path.stem, self.mode)
                 records.append(self.read(path.stem))
             except ValueError as exc:
                 logger.exception("Invalid demo filename %s", path.name)
@@ -130,7 +132,7 @@ class DemoStore:
                     continue
                 for name in interrupted:
                     record["stages"][name].update(
-                        status="failed", error="Interrupted: demo server stopped before this stage completed.",
+                        status="failed", error=f"Interrupted: {self.mode} server stopped before this stage completed.",
                         completed_at=now(),
                     )
                     audit(record, "stage_interrupted", stage=name)

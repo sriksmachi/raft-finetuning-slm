@@ -220,7 +220,9 @@ def submit_finetuning_job(
     if batch_size is not None:
         optional_arguments += f" --batch-size {batch_size}"
     if gradient_accumulation is not None:
-        optional_arguments += f" --gradient-accumulation {gradient_accumulation}"
+        optional_arguments += (
+            f" --gradient-accumulation-steps {gradient_accumulation}"
+        )
     if seed is not None:
         optional_arguments += f" --seed {seed}"
     if lora_adapter_name is not None:
@@ -266,7 +268,12 @@ def submit_finetuning_job(
         experiment_name=experiment_name,
         display_name=display_name,
         identity=ManagedIdentityConfiguration(client_id=managed_identity_client_id),
-        tags={"framework": "SLM Studio", "stage": "fine-tuning", "model_family": "llama-3.2"},
+        tags={
+            "framework": "SLM Studio",
+            "stage": "fine-tuning",
+            "base_model": base_model,
+            "chat_template": chat_template or "training-default",
+        },
     )
     
     return ml_client.jobs.create_or_update(job)
@@ -280,7 +287,7 @@ def submit_inference_evaluation_job(
     experiment_name: str,
     base_model: str,
     display_name: str,
-    finetuning_job_name: str,
+    finetuning_job_name: str | None,
     storage_account_name: str,
     managed_identity_client_id: str,
     base_model_source: str = "foundry",
@@ -290,6 +297,7 @@ def submit_inference_evaluation_job(
     key_vault_name: str | None = None,
     hf_token_secret_name: str | None = None,
     credential=None,
+    workflow_mode: str = "slm_evaluation",
     mode: str = "both",
     compare_with_gpt: bool = False,
     gpt_endpoint: str | None = None,
@@ -297,6 +305,9 @@ def submit_inference_evaluation_job(
     gpt_api_version: str = "2024-10-21",
     gpt_max_workers: int = 16,
     gpt_max_retries: int = 4,
+    gpt_baseline_asset: str | None = None,
+    llm_baseline_output_name: str | None = None,
+    llm_baseline_output_version: str | None = None,
     max_new_tokens: int | None = None,
     max_seq_length: int | None = None,
     max_input_tokens: int | None = None,
@@ -334,7 +345,16 @@ def submit_inference_evaluation_job(
     from azure.ai.ml.entities import ManagedIdentityConfiguration
     from azure.identity import DefaultAzureCredential
 
-    if base_model_source == "foundry":
+    if workflow_mode not in {"llm_baseline", "slm_evaluation"}:
+        raise ValueError(f"Unsupported workflow_mode={workflow_mode!r}")
+    if workflow_mode == "llm_baseline" and finetuning_job_name:
+        raise ValueError("llm_baseline mode must not be bound to a training job")
+    if workflow_mode == "slm_evaluation" and not finetuning_job_name:
+        raise ValueError("slm_evaluation mode requires a fine-tuning job")
+
+    if workflow_mode == "llm_baseline":
+        base_model_argument = None
+    elif base_model_source == "foundry":
         if credential is None:
             credential = DefaultAzureCredential(exclude_interactive_browser_credential=True)
         registry_client = MLClient(credential=credential, registry_name=base_model_registry)
@@ -370,24 +390,39 @@ def submit_inference_evaluation_job(
             f"Unsupported base_model_source={base_model_source!r}; use 'foundry' or 'huggingface'"
         )
 
-    completed_training_job = ml_client.jobs.get(finetuning_job_name)
-    if completed_training_job.status != "Completed":
-        raise RuntimeError(
-            f"Training job {finetuning_job_name!r} is {completed_training_job.status!r}, "
-            "not 'Completed'; cannot mount its model output yet."
+    fine_tuned_model_argument = None
+    if workflow_mode == "slm_evaluation":
+        completed_training_job = ml_client.jobs.get(finetuning_job_name)
+        if completed_training_job.status != "Completed":
+            raise RuntimeError(
+                f"Training job {finetuning_job_name!r} is "
+                f"{completed_training_job.status!r}, not 'Completed'; "
+                "cannot mount its model output yet."
+            )
+        output_datastore = ml_client.datastores.get_default().name
+        fine_tuned_model_argument = Input(
+            type=AssetTypes.URI_FOLDER,
+            path=(
+                f"azureml://datastores/{output_datastore}/paths/"
+                f"azureml/{finetuning_job_name}/model/"
+            ),
+            mode=InputOutputModes.DOWNLOAD,
         )
-    output_datastore = ml_client.datastores.get_default().name
-    fine_tuned_model_argument = Input(
-        type=AssetTypes.URI_FOLDER,
-        path=(
-            f"azureml://datastores/{output_datastore}/paths/"
-            f"azureml/{finetuning_job_name}/model/"
-        ),
-        mode=InputOutputModes.DOWNLOAD,
-    )
 
-    if compare_with_gpt and not gpt_endpoint:
-        raise ValueError("gpt_endpoint is required when compare_with_gpt=True")
+    if compare_with_gpt and gpt_baseline_asset:
+        raise ValueError("Generate or reuse a GPT baseline, not both")
+    if workflow_mode == "llm_baseline" and not compare_with_gpt:
+        raise ValueError("llm_baseline mode requires GPT generation")
+    if workflow_mode == "slm_evaluation" and not gpt_baseline_asset:
+        raise ValueError("slm_evaluation mode requires a GPT baseline asset")
+    if (compare_with_gpt or gpt_baseline_asset) and not gpt_endpoint:
+        raise ValueError("gpt_endpoint is required for GPT generation or RAG judging")
+    if compare_with_gpt and not (
+        llm_baseline_output_name and llm_baseline_output_version
+    ):
+        raise ValueError(
+            "GPT baseline output name and version are required when generating GPT responses"
+        )
 
     optional_arguments = ""
     for flag, value in (
@@ -402,9 +437,8 @@ def submit_inference_evaluation_job(
             optional_arguments += f" {flag} {value}"
     if load_in_4bit:
         optional_arguments += " --load-in-4bit"
-    if compare_with_gpt:
+    if compare_with_gpt or gpt_baseline_asset:
         optional_arguments += (
-            " --compare-with-gpt"
             f" --gpt-endpoint {gpt_endpoint}"
             f" --gpt-deployment {gpt_deployment}"
             f" --gpt-api-version {gpt_api_version}"
@@ -413,6 +447,11 @@ def submit_inference_evaluation_job(
         )
         if judge_deployment:
             optional_arguments += f" --judge-deployment {judge_deployment}"
+    if compare_with_gpt:
+        optional_arguments += (
+            " --compare-with-gpt"
+            " --llm-baseline-output ${{outputs.llm_baseline}}"
+        )
 
     inputs = {
         "test_data": Input(
@@ -420,15 +459,44 @@ def submit_inference_evaluation_job(
             path=test_data_asset,
             mode=InputOutputModes.DOWNLOAD,
         ),
-        "base_model": base_model_argument,
-        "fine_tuned_model": fine_tuned_model_argument,
     }
+    model_arguments = ""
+    if workflow_mode == "slm_evaluation":
+        inputs["base_model"] = base_model_argument
+        inputs["fine_tuned_model"] = fine_tuned_model_argument
+        model_arguments = (
+            " --model ${{inputs.base_model}}"
+            " --fine-tuned-model ${{inputs.fine_tuned_model}}"
+            f" --finetuning-job-name {finetuning_job_name}"
+        )
+    if gpt_baseline_asset:
+        inputs["gpt_baseline"] = Input(
+            type=AssetTypes.URI_FOLDER,
+            path=gpt_baseline_asset,
+            mode=InputOutputModes.DOWNLOAD,
+        )
+        optional_arguments += " --gpt-baseline ${{inputs.gpt_baseline}}"
     hf_token_argument = ""
-    if hf_token:
+    if hf_token and workflow_mode == "slm_evaluation":
         # Plain string input: lib/inference.py reads --hf-token as a literal
         # value, not via its own Key Vault lookup (unlike train.py).
         inputs["hf_token"] = hf_token
         hf_token_argument = " --hf-token ${{inputs.hf_token}}"
+
+    outputs = {
+        "predictions": Output(type=AssetTypes.URI_FOLDER, mode=InputOutputModes.RW_MOUNT)
+    }
+    if compare_with_gpt:
+        outputs["llm_baseline"] = Output(
+            type=AssetTypes.URI_FOLDER,
+            mode=InputOutputModes.RW_MOUNT,
+            name=llm_baseline_output_name,
+            version=llm_baseline_output_version,
+            description=(
+                "Hash-bound GPT responses, diagnostics, and RAG scores for "
+                f"{test_data_asset}"
+            ),
+        )
 
     job = command(
         # lib/inference.py uses `from data import read_jsonl` (a bare
@@ -437,21 +505,18 @@ def submit_inference_evaluation_job(
         code=str(PROJECT_ROOT / "lib"),
         command=(
             "python inference.py "
-            "--model ${{inputs.base_model}} "
-            "--fine-tuned-model ${{inputs.fine_tuned_model}} "
-            f"--finetuning-job-name {finetuning_job_name} "
             "--data ${{inputs.test_data}} "
             "--output ${{outputs.predictions}} "
             f"--storage-account-name {storage_account_name} "
             f"--azure-client-id {managed_identity_client_id} "
+            f"--workflow-mode {workflow_mode} "
             f"--mode {mode}"
+            + model_arguments
             + hf_token_argument
             + optional_arguments
         ),
         inputs=inputs,
-        outputs={
-            "predictions": Output(type=AssetTypes.URI_FOLDER, mode=InputOutputModes.RW_MOUNT)
-        },
+        outputs=outputs,
         environment=environment,
         compute=compute,
         experiment_name=experiment_name,
@@ -460,8 +525,10 @@ def submit_inference_evaluation_job(
         tags={
             "framework": "SLM Studio",
             "stage": "inference-evaluation",
-            "finetuning_job_name": finetuning_job_name,
+            "finetuning_job_name": finetuning_job_name or "",
+            "workflow_mode": workflow_mode,
             "compare_with_gpt": str(compare_with_gpt),
+            "gpt_baseline_asset": gpt_baseline_asset or "",
         },
     )
 

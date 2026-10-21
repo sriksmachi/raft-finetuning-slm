@@ -1,4 +1,7 @@
+import { api as request } from "./api.js";
+
 const $ = (id) => document.getElementById(id);
+let mode = localStorage.getItem("studio-mode") === "production" ? "production" : "demo";
 const stageLabels = {
   data_preparation: "Data",
   training: "Fine-tuning",
@@ -19,6 +22,58 @@ let busy = false;
 let pollTimer;
 let refreshing = false;
 let selectionVersion = 0;
+let preparationLog;
+let preparationLogError;
+const PRODUCTION_POLL_INTERVAL_MS = 10000;
+
+function preparationStatusText(value) {
+  let message = String(value).replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").trim();
+  const entries = [...message.matchAll(
+    /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:\d{2})?\s+\[(DEBUG|INFO|WARNING|ERROR|CRITICAL|STATUS)\]\s*/g,
+  )];
+  if (entries.length) {
+    const latest = entries.at(-1);
+    message = message.slice(latest.index + latest[0].length).trim();
+    if (latest[1] !== "STATUS") message = message.replace(/^[\w.]+:\s*/, "");
+  }
+  const progress = message.match(/^(Pages|Processing chunks):\s*\d+%.*?\|\s*(\d+)\/(\d+)/);
+  if (progress) {
+    return progress[1] === "Pages"
+      ? `Extracted ${progress[2]} of ${progress[3]} pages`
+      : `Processed ${progress[2]} of ${progress[3]} chunks`;
+  }
+  message = message.replace(/^(Extracting page \d+\/\d+):\s*page_\d+\.jpg$/, "$1")
+    .replace(/^Generated samples:\s*(\d+)\/(\d+)$/, "Generated $1 of $2 samples");
+  return message.replace(/\b(page|pages|PDF|answer|chunk)\s+(\d+)\/(\d+)\b/gi, "$1 $2 of $3");
+}
+
+function renderPreparationLog() {
+  const visible = mode === "production" && Boolean(selected);
+  $("preparation-log-panel").hidden = !visible;
+  if (!visible) return;
+  const current = preparationLog?.run_id === selected.run_id ? preparationLog : undefined;
+  $("preparation-status").textContent = preparationLogError
+    || (current ? preparationStatusText(current.current_status) : "Loading preparation log...");
+  $("preparation-log").textContent = current?.log || "";
+  $("preparation-log-updated").textContent = current
+    ? `Last log update: ${new Date(current.updated_at).toLocaleString()}. ${running() ? "Checks every 10 seconds." : "Job is no longer running."}${current.truncated ? " Showing recent output only." : ""}`
+    : "Checks every 10 seconds while preparation is running.";
+}
+
+async function refreshPreparationLog() {
+  if (mode !== "production" || !selected) return;
+  const runId = selected.run_id;
+  const version = selectionVersion;
+  try {
+    const result = await api(`/api/runs/${encodeURIComponent(runId)}/log`);
+    if (version !== selectionVersion || selected?.run_id !== runId) return;
+    preparationLog = result;
+    preparationLogError = undefined;
+  } catch (error) {
+    if (version !== selectionVersion || selected?.run_id !== runId) return;
+    preparationLogError = error.message;
+  }
+}
 
 function element(tag, text, className) {
   const node = document.createElement(tag);
@@ -47,20 +102,7 @@ function showError(error) {
 }
 
 async function api(path, body) {
-  const response = await fetch(path, {
-    method: body === undefined ? "GET" : "POST",
-    headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  const result = await response.json();
-  if (!response.ok) {
-    const detail = result.detail;
-    const message = typeof detail === "string" ? detail :
-      Array.isArray(detail) ? detail.map((issue) => `${issue.loc.join(".")}: ${issue.msg}`).join("; ") :
-      `API returned ${response.status}.`;
-    throw new Error(message);
-  }
-  return result;
+  return request(path, body, mode);
 }
 
 function field(form, name) {
@@ -77,6 +119,7 @@ function running() {
 
 function unlockedStageIndex(run = selected) {
   if (!run || !config) return 0;
+  if (mode === "production") return 0;
   let unlocked = 0;
   for (let index = 0; index < config.stage_order.length - 1; index += 1) {
     const stage = config.stage_order[index];
@@ -91,7 +134,11 @@ function canOpenStage(name) {
 }
 
 function updateWizardNavigation() {
-  if (!selected || !config) return;
+  if (!selected || !config) {
+    $("wizard-back").disabled = true;
+    $("wizard-next").disabled = true;
+    return;
+  }
   const index = config.stage_order.indexOf(tab);
   const unlocked = unlockedStageIndex();
   $("wizard-back").disabled = index <= 0 || busy;
@@ -99,7 +146,9 @@ function updateWizardNavigation() {
     || index >= config.stage_order.length - 1 || busy;
   $("wizard-position").textContent = `Step ${index + 1} of ${config.stage_order.length}`;
   const nextRequired = config.stage_order[unlocked];
-  $("wizard-status").textContent = selected.status === "completed"
+  $("wizard-status").textContent = mode === "production"
+    ? "Only data preparation is enabled in production. Later stages are not connected."
+    : selected.status === "completed"
     ? "Workflow complete. Review any completed step."
     : `Current required step: ${stageLabels[nextRequired]}. Future steps unlock in order.`;
 }
@@ -262,10 +311,16 @@ function renderSelected() {
   if (active) {
     const value = run.stages[active].progress;
     $("progress-label").textContent = `${stageLabels[active]} in progress`;
-    $("progress-value").textContent = `${value}%`;
-    $("stage-progress").value = value;
-    $("stage-progress").textContent = `${value}%`;
+    $("progress-value").textContent = mode === "production" ? "Running" : `${value}%`;
+    if (mode === "production") {
+      $("stage-progress").removeAttribute("value");
+      $("stage-progress").textContent = "Running";
+    } else {
+      $("stage-progress").value = value;
+      $("stage-progress").textContent = `${value}%`;
+    }
   }
+  renderPreparationLog();
   for (const target of ["data-summary", "training-summary", "evaluation-summary", "decision-summary", "deployment-summary"]) {
     $(target).replaceChildren();
   }
@@ -279,11 +334,18 @@ function renderSelected() {
     const card = run.data_card;
     summary("data-summary", "Data card", [
       ["Recipe", recipeLabels[card.recipe] ?? card.recipe],
+      ["Generated samples", card.record_count],
       ["Source", referenceLabel(card.source_folder ?? card.source_references?.join(", "))],
       ["Split counts", JSON.stringify(card.split_counts)],
       ["Validation", typeof card.validation === "object" ? `${card.validation.status}: ${card.validation.checked_records} records checked, ${card.validation.invalid_records} invalid` : card.validation],
       ["Fingerprint", referenceLabel(card.fingerprint)], ["Data asset", referenceLabel(card.asset_reference ?? card.azure_ml_asset)],
     ]);
+    for (const sample of card.samples ?? []) {
+      const preview = element("details");
+      preview.append(element("summary", `${sample.split ?? "train"}: ${sample.question}`),
+        element("p", sample.cot_answer));
+      $("data-summary").append(preview);
+    }
   } else {
     $("data-summary").append(element("p", "Data preparation has not completed yet.", "hint"));
   }
@@ -369,14 +431,14 @@ function renderSelected() {
         ? "The candidate has zero traffic. Run the deployment gate before routing requests."
         : "Complete the approved candidate release before the deployment gate.", "hint"));
   }
-  const locked = busy || running() || run.status === "failed";
+  const locked = busy || running() || run.status === "failed" || mode === "production";
   $("train").disabled = locked || !stageSucceeded("data_preparation") || stageSucceeded("training");
   $("suggest").disabled = locked || !stageSucceeded("data_preparation");
   $("evaluate").disabled = locked || !stageSucceeded("training") || stageSucceeded("evaluation");
   $("register").disabled = locked || !stageSucceeded("evaluation") || Boolean(registration);
   $("deploy").disabled = locked || !registration || stageSucceeded("deployment");
   $("override-fields").hidden = run.evaluation?.gate.status !== "blocked" || Boolean(registration);
-  $("create-form").querySelector("button").disabled = busy;
+  $("create-form").querySelector("button").disabled = busy || running();
   $("run-select").disabled = busy;
   $("new-run").disabled = busy;
   setTab(tab);
@@ -392,9 +454,9 @@ function schedulePoll() {
         await refresh();
       } catch (error) {
         showError(error);
-        pollTimer = setTimeout(schedulePoll, 3000);
+        schedulePoll();
       }
-    }, 1200);
+    }, mode === "production" ? PRODUCTION_POLL_INTERVAL_MS : 1200);
   }
 }
 
@@ -412,14 +474,27 @@ async function refresh() {
       const completedRunningStage = config.stage_order.find((name) =>
         previous.stages[name].status === "running"
         && selected.stages[name].status === "succeeded");
-      if (completedRunningStage) tab = selected.current_stage;
+      if (completedRunningStage) tab = mode === "production" ? "data_preparation" : selected.current_stage;
     }
     if (!selected && runs.length) {
       selected = runs[0];
       tab = selected.current_stage;
     }
-    if (selected) renderSelected();
-    else renderRuns();
+    if (selected) {
+      await refreshPreparationLog();
+      if (version !== selectionVersion) return;
+      renderSelected();
+    }
+    else {
+      renderRuns();
+      renderPreparationLog();
+      $("run-title").textContent = "New data preparation";
+      $("run-meta").textContent = "Choose a source folder to create your first run.";
+      $("run-status").textContent = "READY";
+      $("wizard-status").textContent = mode === "production"
+        ? "Only data preparation is enabled in production. Later stages are not connected." : "";
+      updateWizardNavigation();
+    }
   } finally {
     refreshing = false;
   }
@@ -435,7 +510,11 @@ async function selectRun(id) {
     tab = selected.current_stage;
     $("error").hidden = true;
     if (selected.training?.config) prefill(selected.training.config);
+    preparationLog = undefined;
+    preparationLogError = undefined;
     renderSelected();
+    await refreshPreparationLog();
+    if (version === selectionVersion) renderPreparationLog();
   } catch (error) {
     showError(error);
   }
@@ -488,7 +567,12 @@ $("create-form").addEventListener("submit", (event) => {
     selected = await api("/api/runs", {
       source_folder: field(form, "source_folder").value.trim(),
       recipe: field(form, "recipe").value,
-      scenario: field(form, "scenario").value,
+      ...(mode === "demo" ? { scenario: field(form, "scenario").value } : {
+        num_questions: Number(field(form, "num_questions").value),
+        oracle_probability: Number(field(form, "oracle_probability").value),
+        data_asset_name: field(form, "data_asset_name").value.trim(),
+      }),
+      num_samples: Number(field(form, "num_samples").value),
       confirmed: field(form, "confirmed").checked,
     });
     tab = "data_preparation";
@@ -547,15 +631,28 @@ $("download").addEventListener("click", () => {
 async function initialize() {
   config = await api("/api/config");
   evaluationShowcase = await api("/api/evaluation-showcase");
-  if (config.mode !== "demo" || config.production_enabled) {
+  if (config.mode !== mode) {
     throw new Error("The API is configured for a different execution mode.");
   }
+  $("mode").value = mode;
+  $("mode-note").textContent = mode === "demo" ? "Demo only. No Azure services are called."
+    : "Production: real, billable GPT generation and Azure ML publication. Only data preparation is available.";
+  $("production-options").hidden = mode !== "production";
+  $("demo-options").hidden = mode !== "demo";
+  field($("create-form"), "recipe").querySelector('[value="context-assisted"]').disabled = mode === "production";
+  $("confirmation-label").textContent = mode === "production"
+    ? "I confirm billable GPT generation, PDF extraction, and Azure ML data publication."
+    : "I confirm the data source and generation recipe.";
   const models = field($("training-form"), "base_model");
   for (const model of config.models) {
     const option = element("option", modelLabel(model.id));
     option.value = model.id;
     models.append(option);
   }
+  $("mode").addEventListener("change", (event) => {
+    localStorage.setItem("studio-mode", event.target.value);
+    window.location.reload();
+  });
   await refresh();
   renderEvaluationShowcase();
   if (selected?.training?.config) prefill(selected.training.config);

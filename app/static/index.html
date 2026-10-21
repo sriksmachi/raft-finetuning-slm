@@ -17,7 +17,7 @@
       <label for="mode">Mode</label>
       <select id="mode" aria-describedby="mode-note">
         <option value="demo">Demo</option>
-        <option value="production" disabled>Production (not connected)</option>
+        <option value="production">Production</option>
       </select>
     </div>
   </header>
@@ -53,6 +53,15 @@
         <progress id="stage-progress" max="100" value="0">0%</progress>
         <small>Progress updates appear here while a stage is running.</small>
       </section>
+      <section id="preparation-log-panel" class="progress-panel" hidden>
+        <h3>Preparation job status</h3>
+        <p id="preparation-status" role="status" aria-live="polite">Loading preparation log...</p>
+        <small id="preparation-log-updated"></small>
+        <details>
+          <summary>Recent job logs</summary>
+          <pre id="preparation-log"></pre>
+        </details>
+      </section>
 
       <section id="panel-data_preparation" class="panel">
         <p class="eyebrow">STAGE 01</p><h2>Prepare training data</h2>
@@ -62,13 +71,19 @@
           <div class="form-grid">
             <label>Data folder<input name="source_folder" value="documents/network-operations" maxlength="240" required></label>
             <label>Generation recipe<select name="recipe" aria-describedby="recipe-explanation"><option value="context-grounded">Context-grounded (RAFT)</option><option value="context-assisted">Context-assisted (RAG)</option></select></label>
+            <label>Number of samples (total)<input name="num_samples" type="number" value="240" min="3" max="100000" step="1" required></label>
           </div>
           <p id="recipe-explanation" class="hint">RAFT builds training examples with relevant and distractor documents. RAG retrieves supporting documents when answering; it is not a fine-tuning method by itself.</p>
-          <details>
+          <div id="production-options" class="form-grid" hidden>
+            <label>Questions per generation call<input name="num_questions" type="number" value="5" min="1" max="100" step="1" required></label>
+            <label>Oracle probability<input name="oracle_probability" type="number" value="0.8" min="0" max="1" step="any" required></label>
+            <label>Azure ML data asset name<input name="data_asset_name" value="slm-studio-data" required></label>
+          </div>
+          <details id="demo-options">
             <summary>Example workflow options</summary>
             <label>Outcome<select name="scenario"><option value="passing">Passing candidate</option><option value="blocked">Blocked gate</option><option value="failure">Training failure</option></select></label>
           </details>
-          <label class="check"><input name="confirmed" type="checkbox" required>I confirm the data source and generation recipe.</label>
+          <label class="check"><input name="confirmed" type="checkbox" required><span id="confirmation-label">I confirm the data source and generation recipe.</span></label>
           <button class="primary" type="submit">Prepare data</button>
         </form>
       </section>

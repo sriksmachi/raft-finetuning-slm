@@ -31,7 +31,7 @@ def now() -> str:
 
 def audit(record: dict, action: str, actor: str = "local-demo-user", **details) -> None:
     record["audit"].append(
-        {"action": action, "actor": actor, "timestamp": now(), "simulated": True, **details}
+        {"action": action, "actor": actor, "timestamp": now(), "simulated": record["simulated"], **details}
     )
 
 
@@ -58,6 +58,11 @@ def new_record(run_id: str, source: str, recipe: str, scenario: str) -> dict:
 
 def data_card(record: dict) -> dict:
     run_id = record["run_id"]
+    count = record.get("num_samples", 240)
+    train_count = min(max(1, int(count * .7)), count - 2)
+    validation_count = min(max(1, int(count * .15)), count - train_count - 1)
+    splits = {"train": train_count, "validation": validation_count,
+              "test": count - train_count - validation_count}
     return {
         "simulated": True, "source": "demo_fixture",
         "source_folder": record["source_folder"], "source_is_label_only": True,
@@ -71,11 +76,13 @@ def data_card(record: dict) -> dict:
             if record["recipe"] == "context-grounded"
             else "Demo-only illustrative recipe; not a defined production generation recipe."
         ),
-        "document_count": 2, "chunk_count": 64, "record_count": 240,
-        "splits": {"train": 168, "validation": 36, "test": 36},
-        "split_counts": {"train": 168, "validation": 36, "test": 36},
+        "document_count": 2, "chunk_count": 64, "record_count": count,
+        "splits": splits, "split_counts": splits,
+        "samples": [{"question": "Where can employees find the security policy?",
+                     "cot_answer": "In the employee handbook.", "type": "oracle",
+                     "split": "train", "simulated": True}],
         "split_policy": "Sealed document-group split; illustrative fixture, no live generation.",
-        "validation": {"simulated": True, "status": "passed", "checked_records": 240,
+        "validation": {"simulated": True, "status": "passed", "checked_records": count,
                        "invalid_records": 0, "checks": ["schema", "nonempty_context", "split_disjointness"]},
         "data_fingerprint": "demo-sha256:handbook-v1-sealed-36",
         "fingerprint": "demo-sha256:handbook-v1-sealed-36",
@@ -112,7 +119,7 @@ def evaluation_result(record: dict) -> dict:
         ("gpt", "demo-gpt-baseline", [0.91, 0.90, 0.93, 420.0, 0.0012], 0.95),
     ]:
         rows.append({
-            "simulated": True, "role": role, "id": model_id, "sample_count": 36,
+            "simulated": True, "role": role, "id": model_id, "sample_count": record["data_card"]["split_counts"]["test"],
             "metrics": dict(zip([metric["key"] for metric in METRICS], values)),
             "json_validity": validity, "test_split": record["data_card"]["assets"]["test"],
             "data_fingerprint": record["data_card"]["data_fingerprint"],
@@ -124,7 +131,7 @@ def evaluation_result(record: dict) -> dict:
         "candidate_artifact": training["model_artifact"],
         "test_split": record["data_card"]["assets"]["test"],
         "data_fingerprint": record["data_card"]["data_fingerprint"],
-        "sample_count": 36, "sealed": True, "models": rows,
+        "sample_count": record["data_card"]["split_counts"]["test"], "sealed": True, "models": rows,
         "scoring_policy": {
             "simulated": True,
             "id": "demo-handbook-rubric-v1",
