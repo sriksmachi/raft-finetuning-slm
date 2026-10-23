@@ -1,4 +1,5 @@
 azure-identity
+azure-keyvault-secrets>=4,<5
 datasets==2.19.1
 ipykernel
 ipython
@@ -10,10 +11,6 @@ langchain-core>=0.2.30
 langchain-experimental==0.0.62
 langchain-openai==0.1.25
 langchain-text-splitters==0.2.2
-llama-index-core
-llama-index-embeddings-azure-openai
-llama-index-llms-azure-openai
-llama-index-readers-file
 matplotlib==3.8.3
 httpx>=0.23.0,<0.28.0
 nest-asyncio
@@ -22,13 +19,23 @@ pandas==2.2.1
 pymupdf
 python-dotenv
 ragas==0.1.13
+deepeval>=3.9.9,<4
 scikit-learn
 tiktoken==0.7.0
 tqdm==4.66.2
 spacy
 torch
-transformers
+transformers==4.57.1
 trl
 sentencepiece
 bitsandbytes 
 accelerate
+azure-ai-ml>=1.26,<2
+azureml-mlflow>=1.59,<2
+mlflow>=2.19,<3
+peft>=0.15,<1
+pytest>=8,<9
+pyyaml>=6,<7
+azureml-fsspec>=1.0,<2
+# azureml-dataprep still imports pkg_resources, which setuptools 81+ removed.
+setuptools<81

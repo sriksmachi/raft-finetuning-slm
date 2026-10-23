@@ -126,17 +126,18 @@ def extract_chunks(
 
     log.info("Extracting text from %d page(s) via GPT-4o", len(image_paths))
     text_paths: list[Path] = []
-    for image_path in tqdm(image_paths, desc="Pages"):
+    for page_index, image_path in enumerate(tqdm(image_paths, desc="Pages"), start=1):
+        log.info("Extracting page %d/%d: %s", page_index, len(image_paths), image_path.name)
         text_path = out_dir / image_path.with_suffix(".txt").name
         if text_path.exists():
-            log.debug("Skipping '%s' (already exists)", text_path.name)
+            log.info("Reusing extracted page %d/%d", page_index, len(image_paths))
             text_paths.append(text_path)
             continue
         text = image_to_text(image_path)
         if text:
             text_path.write_text(text, encoding="utf-8")
             text_paths.append(text_path)
-            log.debug("Saved '%s'", text_path.name)
+            log.info("Saved extracted page %d/%d", page_index, len(image_paths))
         else:
             log.warning("No text extracted from '%s'", image_path.name)
 

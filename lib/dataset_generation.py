@@ -1,0 +1,372 @@
+# =============================================================================
+# SLM Studio context-grounded training data generation using GPT Vision
+# =============================================================================
+# Generates Question-Document-Answer triplets from a PDF for supervised fine-tuning.
+# Outputs train/validate/test JSONL files under ./data/training_data/
+
+import logging
+import logging.config
+import os
+import random
+import re
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+from datasets import Dataset
+from dotenv import load_dotenv
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from openai import AzureOpenAI
+from tqdm import tqdm
+from azure.identity import AzureCliCredential, get_bearer_token_provider
+
+load_dotenv()
+
+DEFAULT_NUM_DISTRACTORS = 3
+DEFAULT_ORACLE_PROBABILITY = 0.8
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Azure OpenAI client
+# ---------------------------------------------------------------------------
+
+azure_openai_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+endpoint_host = urlparse(azure_openai_endpoint).hostname or ""
+token_scope = os.getenv("AZURE_OPENAI_TOKEN_SCOPE") or (
+    "https://ai.azure.com/.default"
+    if endpoint_host.endswith(".services.ai.azure.com")
+    else "https://cognitiveservices.azure.com/.default"
+)
+
+_token_provider = get_bearer_token_provider(
+    AzureCliCredential(),
+    token_scope,
+)
+
+client = AzureOpenAI(
+    azure_endpoint=azure_openai_endpoint,
+    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+    azure_ad_token_provider=_token_provider,
+)
+
+gpt4o_deployment = os.getenv("AZURE_OPENAI_GPT_DEPLOYMENT")
+
+log.info("GPT Vision deployment: %s", gpt4o_deployment)
+log.info("Azure OpenAI token scope: %s", token_scope)
+
+# ---------------------------------------------------------------------------
+# 1. Load and chunk domain-specific documents
+# ---------------------------------------------------------------------------
+
+def remove_special_characters(string: str) -> str:
+    cleaned = re.sub(r'[^a-zA-Z0-9\s]', '', string)
+    return re.sub(r'\s+', ' ', cleaned).strip()
+
+
+def load_chunks_from_dir(
+    chunks_dir: str | Path,
+    chunk_size: int = 1024,
+    chunk_overlap: int = 50,
+) -> list[str]:
+    """Read .txt files produced by pdf_to_chunks, apply RecursiveCharacterTextSplitter,
+    and return filtered text chunks ready for context-grounded dataset generation."""
+    paths = sorted(Path(chunks_dir).rglob("*.txt"))
+    page_texts = [p.read_text(encoding="utf-8") for p in paths if p.stat().st_size > 0]
+    log.info("Loaded %d page file(s) from '%s'", len(page_texts), chunks_dir)
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+
+    chunks: list[str] = []
+
+    for text in page_texts:
+        for split in splitter.split_text(text):
+            if len(remove_special_characters(split)) > 100:
+                chunks.append(remove_special_characters(split))
+
+    log.info("%d chunk(s) after splitting and filtering", len(chunks))
+    
+    return chunks
+
+
+# ---------------------------------------------------------------------------
+# 2. Generate training data
+# ---------------------------------------------------------------------------
+
+def strip_str(s: str) -> str:
+    l, r = 0, len(s) - 1
+    beg_found = False
+    for i in range(len(s)):
+        if s[i].isalpha():
+            if not beg_found:
+                l = i
+                beg_found = True
+            else:
+                r = i
+    r += 2
+    return s[l:min(r, len(s))]
+
+
+def generate_instructions_gen(chunk: Any, num_questions: int = 5) -> list[str]:
+    log.debug("Generating %d questions for chunk (len=%d)", num_questions, len(str(chunk)))
+    response = client.chat.completions.create(
+        model=gpt4o_deployment,
+        messages=[
+            {"role": "system", "content": "You are a synthetic question-answer pair generator. Given a chunk of context about some topic(s), generate exactly %s example questions a user could ask and would be answered using information from the chunk. For example, if the given context was a Wikipedia paragraph about the United States, an example question could be 'How many states are in the United States?'" % (num_questions)},
+            {"role": "system", "content": "The questions should be able to be answered in a few words or less. Include only the questions in your response."},
+            {"role": "user", "content": str(chunk)}
+        ]
+    )
+    queries = response.choices[0].message.content.split('\n')
+    queries = [strip_str(q) for q in queries]
+    queries = [q for q in queries if any(c.isalpha() for c in q)]
+    queries = queries[:num_questions]
+    log.debug("Generated %d question(s)", len(queries))
+    return queries
+
+
+def encode_question_gen(question: str, chunk: Any) -> list[str]:
+    prompt = """
+        Question: {question}\n Context: {context}\n
+        Answer this question using the information given in the context above and no prior knowledge. 
+        Here is things to pay attention to: 
+        - First provide step-by-step reasoning on how to answer the question. 
+        - In the reasoning, copy paste some sentences from the context, include them in ##begin_quote## and ##end_quote##. This would mean that things outside of ##begin_quote## and ##end_quote## are not directly copy paste from the context. 
+        - End your response with final answer in the form <ANSWER>: $answer </ANSWER>.
+        - If the answer cannot be found in the context, say "I'm sorry, I cannot answer this question as I'm missing the required information"
+        - DO NOT use any information that is not included in the context. 
+    """.format(question=question, context=str(chunk))
+    return [
+        {"role": "system", "content": "You are a helpful question answerer who can provide an answer given a question and relevant context."},
+        {"role": "user", "content": prompt},
+    ]
+
+
+def generate_label(question: str, context: Any) -> str | None:
+    log.debug("Generating answer for question: %.80s", question)
+    messages = encode_question_gen(question, context)
+    response = client.chat.completions.create(
+        model=gpt4o_deployment,
+        messages=messages,
+        n=1,
+        temperature=0
+    )
+    answer = response.choices[0].message.content
+    log.debug("Answer generated (%d chars)", len(answer) if answer else 0)
+    return answer
+
+
+ds: Dataset = Dataset.from_dict({})
+errors: list = []
+
+
+def build_training_context_docs(
+    chunks: list[str],
+    oracle_index: int,
+    num_distract: int = DEFAULT_NUM_DISTRACTORS,
+    p: float = DEFAULT_ORACLE_PROBABILITY,
+) -> tuple[list[str], bool]:
+    """Build context documents with a P / 1-P oracle inclusion split."""
+    if not 0 <= p <= 1:
+        raise ValueError("p must be between 0 and 1")
+    if num_distract < 0:
+        raise ValueError("num_distract must be non-negative")
+    if not 0 <= oracle_index < len(chunks):
+        raise IndexError("oracle_index is out of range")
+
+    distractor_indices = [idx for idx in range(len(chunks)) if idx != oracle_index]
+    include_oracle = random.random() < p
+    distractor_count = num_distract if include_oracle else num_distract + 1
+
+    if distractor_count > len(distractor_indices):
+        raise ValueError(
+            f"Need {distractor_count} distractor chunk(s), but only "
+            f"{len(distractor_indices)} available."
+        )
+
+    docs = [chunks[idx] for idx in random.sample(distractor_indices, distractor_count)]
+    if include_oracle:
+        docs.append(chunks[oracle_index])
+
+    random.shuffle(docs)
+    return docs, include_oracle
+
+
+def add_chunk_to_dataset(
+    chunks: list[str],
+    chunk: str,
+    chunk_index: int,
+    num_questions: int = 5,
+    num_distract: int = DEFAULT_NUM_DISTRACTORS,
+    p: float = DEFAULT_ORACLE_PROBABILITY,
+) -> list[dict[str, Any]]:
+    global errors
+    i = chunk_index
+    rows: list[dict[str, Any]] = []
+    log.info("Generating %d questions for chunk %d/%d", num_questions, i + 1, len(chunks))
+    try:
+        qs = generate_instructions_gen(chunk, num_questions)
+    except Exception as e:
+        log.error("Failed to generate questions for chunk %d: %s", i, e, exc_info=True)
+        errors.append(e)
+        return rows
+
+    for question_index, q in enumerate(qs, start=1):
+        log.info("Generating answer %d/%d for chunk %d", question_index, len(qs), i + 1)
+        datapt = {
+            "id": None,
+            "type": None,
+            "question": None,
+            "context": None,
+            "oracle_context": None,
+            "cot_answer": None,
+        }
+        datapt["id"] = f"seed_task_{i}"
+        datapt["type"] = "general"
+        datapt["question"] = q
+
+        try:
+            docs, oracle = build_training_context_docs(chunks, i, num_distract, p)
+        except Exception as e:
+            log.error("Failed to sample training context for chunk %d: %s", i, e, exc_info=True)
+            errors.append(e)
+            continue
+
+        d = { "sentences": []}
+        d["sentences"].append(docs)
+        datapt["context"] = d # this can be a list of distractor chunks and the oracle chunk, but we will use the oracle chunk for generating the answer
+        datapt["oracle_context"] = chunk # this is the oracle chunk that contains the answer to the question
+        datapt["type"] = "oracle" if oracle else "distractor"
+
+        try:
+            datapt["cot_answer"] = generate_label(q, chunk)
+        except Exception as e:
+            log.error("Failed to generate answer for question '%s': %s", q, e, exc_info=True)
+            errors.append(e)
+            continue
+
+        context = ""
+        # The target answer is generated from the oracle chunk even for distractor-only contexts,
+        # preserving the Q + D_1...D_k -> A* training contract.
+        for doc in docs:
+            context += "<DOCUMENT>" + str(doc) + "</DOCUMENT>\n"
+        context += "\n### Question:\n" + q 
+        datapt["instruction"] = context
+        rows.append(datapt)
+        log.info("Generated answer %d/%d for chunk %d", question_index, len(qs), i + 1)
+
+    return rows
+
+
+def generate_dataset(
+    chunks: list[str],
+    num_questions: int = 5,
+    num_distract: int = DEFAULT_NUM_DISTRACTORS,
+    p: float = DEFAULT_ORACLE_PROBABILITY,
+    num_samples: int | None = None,
+) -> Dataset:
+    if num_questions < 1:
+        raise ValueError("num_questions must be positive")
+    if num_samples is not None and num_samples < 3:
+        raise ValueError("num_samples must be at least 3 for nonempty source-disjoint splits")
+    if num_samples is not None and len(set(chunks)) < 3:
+        raise ValueError("At least 3 distinct source chunks are required")
+    global ds, errors
+    errors = []
+    ds = Dataset.from_dict({})
+    log.info(
+        "Starting sequential dataset generation for %d chunks "
+        "(num_questions=%d, num_distract=%d, p=%.2f)",
+        len(chunks),
+        num_questions,
+        num_distract,
+        p,
+    )
+    rows: list[dict[str, Any]] = []
+    generation_chunks = chunks if num_samples is None else list(dict.fromkeys(chunks))
+    group_count = len(generation_chunks) if num_samples is None else min(len(generation_chunks), num_samples)
+    for chunk_index, chunk in enumerate(tqdm(generation_chunks[:group_count], desc="Processing chunks")):
+        question_count = num_questions if num_samples is None else (
+            num_samples // group_count + (chunk_index < num_samples % group_count)
+        )
+        try:
+            remaining = question_count
+            while remaining:
+                batch_size = min(remaining, num_questions)
+                generated = add_chunk_to_dataset(
+                    generation_chunks,
+                    chunk,
+                    chunk_index,
+                    batch_size,
+                    num_distract,
+                    p,
+                )
+                if num_samples is not None and (
+                    len(generated) != batch_size
+                    or any(not row.get("cot_answer") for row in generated)
+                ):
+                    raise RuntimeError("Generation returned fewer valid samples than requested")
+                rows.extend(generated)
+                log.info("Generated samples: %d/%s", len(rows), num_samples or "unbounded")
+                remaining -= batch_size
+        except Exception as e:
+            errors.append(e)
+            log.error(
+                "Unhandled exception processing chunk %d: %s",
+                chunk_index,
+                e,
+                exc_info=True,
+            )
+            if num_samples is not None:
+                raise RuntimeError("Unable to generate the requested sample count") from e
+            break
+
+    ds = Dataset.from_list(rows) if rows else Dataset.from_dict({})
+
+    log.info("Dataset generation complete. Errors: %d/%d. Examples: %d",
+             len(errors), len(chunks), len(ds) if ds else 0)
+    if num_samples is not None and (errors or len(ds) != num_samples):
+        raise RuntimeError(f"Requested {num_samples} samples but generated {len(ds)}; errors: {len(errors)}")
+    return ds
+
+# ---------------------------------------------------------------------------
+# 3. Split and save
+# ---------------------------------------------------------------------------
+
+def save_datasets(training_df, output_dir: str = "./data/training_data_raft") -> None:
+    log.info("Splitting %d rows into train/validate/test sets", len(training_df))
+    os.makedirs(output_dir, exist_ok=True)
+
+    source_groups = training_df["oracle_context"].drop_duplicates().sample(
+        frac=1, random_state=42
+    )
+    if len(source_groups) < 3:
+        raise ValueError("At least 3 distinct source chunks are required for nonempty splits")
+    train_end = min(max(1, int(.8 * len(source_groups))), len(source_groups) - 2)
+    validation_end = min(max(train_end + 1, int(.9 * len(source_groups))), len(source_groups) - 1)
+    train_sources = set(source_groups.iloc[:train_end])
+    validation_sources = set(source_groups.iloc[train_end:validation_end])
+    test_sources = set(source_groups.iloc[validation_end:])
+    train_df = training_df[training_df["oracle_context"].isin(train_sources)]
+    validate_df = training_df[training_df["oracle_context"].isin(validation_sources)]
+    test_df = training_df[training_df["oracle_context"].isin(test_sources)]
+    log.info("Split sizes — Train: %d, Validate: %d, Test: %d",
+             train_df.shape[0], validate_df.shape[0], test_df.shape[0])
+
+    train_df.to_json(f"{output_dir}/train.jsonl", orient="records", lines=True)
+    validate_df.to_json(f"{output_dir}/validation.jsonl", orient="records", lines=True)
+    test_df.to_json(f"{output_dir}/test.jsonl", orient="records", lines=True)
+    log.info("Saved train/validation/test datasets to '%s/'", output_dir)

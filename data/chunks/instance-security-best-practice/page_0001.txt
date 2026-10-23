@@ -1,9 +1,0 @@
-White Paper
-
-# ServiceNow Security Best Practices Guide
-
-Key considerations for securing ServiceNow instances
-
-Release: Zurich
-
-servicenow

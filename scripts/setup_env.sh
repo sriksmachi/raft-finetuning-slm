@@ -9,15 +9,15 @@
 # Usage:
 #   bash scripts/setup_env.sh              # default venv path + kernel name
 #   VENV_DIR=/mnt/tmp/venvs/my-env bash scripts/setup_env.sh
-#   KERNEL_NAME=raft-py312 KERNEL_DISPLAY_NAME="Python 3.12.10 (raft /mnt)" \
+#   KERNEL_NAME=slm-studio-py312 KERNEL_DISPLAY_NAME="Python 3.12.10 (SLM Studio /mnt)" \
 #     bash scripts/setup_env.sh
 
 set -euo pipefail
 
 PYTHON_VERSION="${PYTHON_VERSION:-3.12.10}"
-VENV_DIR="${VENV_DIR:-/mnt/tmp/venvs/raft-py312-mnt}"
-KERNEL_NAME="${KERNEL_NAME:-raft-py312-mnt}"
-KERNEL_DISPLAY_NAME="${KERNEL_DISPLAY_NAME:-Python ${PYTHON_VERSION} (raft /mnt)}"
+VENV_DIR="${VENV_DIR:-/mnt/tmp/venvs/slm-studio-py312-mnt}"
+KERNEL_NAME="${KERNEL_NAME:-slm-studio-py312-mnt}"
+KERNEL_DISPLAY_NAME="${KERNEL_DISPLAY_NAME:-Python ${PYTHON_VERSION} (SLM Studio /mnt)}"
 
 # uv installs Pythons and caches wheels; pin both to /mnt so nothing lands on
 # the slow Azure Files share.
@@ -52,13 +52,8 @@ fi
 
 VENV_PY="${VENV_DIR}/bin/python"
 
-echo "[setup_env] installing requirements-azureml.txt"
-uv pip install --python "${VENV_PY}" -r "${REPO_ROOT}/requirements-azureml.txt"
-
-if [[ -f "${REPO_ROOT}/requirements.txt" ]]; then
-    echo "[setup_env] installing requirements.txt"
-    uv pip install --python "${VENV_PY}" -r "${REPO_ROOT}/requirements.txt"
-fi
+echo "[setup_env] installing requirements.txt"
+uv pip install --python "${VENV_PY}" -r "${REPO_ROOT}/requirements.txt"
 
 echo "[setup_env] installing ipykernel and registering Jupyter kernelspec"
 uv pip install --python "${VENV_PY}" ipykernel

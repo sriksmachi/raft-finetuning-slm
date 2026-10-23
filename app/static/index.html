@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SLM Studio</title>
+  <link rel="stylesheet" href="/static/styles.css?v=candidate-release">
+  <script type="module" src="/static/app.js?v=candidate-release"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-lockup">
+      <a class="brand" href="/">SLM<span>Studio</span></a>
+      <p class="tagline">Cut token costs with task-aligned open models—fine-tune, compare, and deploy in minutes.</p>
+    </div>
+  </header>
+  <div class="notice">
+    Real Azure preparation, training, evaluation and approved release. GPU and GPT costs apply.
+  </div>
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="eyebrow">YOUR WORKSPACE</p>
+      <h1>Specialize.<br>Compare.<br>Decide.</h1>
+      <p class="muted">Prepare grounded datasets, configure fine-tuning, and compare models before an evidence-based release.</p>
+      <button id="new-run" class="primary" type="button">+ New run</button>
+      <div class="section-heading"><h2>Recent runs</h2><button id="refresh" class="quiet" type="button">Refresh</button></div>
+      <label class="sr-only" for="run-select">Select a run</label>
+      <select id="run-select"><option value="">Loading runs...</option></select>
+      <div id="run-list" class="run-list" aria-label="Recent runs"></div>
+      <div class="sidebar-note">
+        <strong>Explore the decision, not a dashboard.</strong>
+        <p>Review the candidate, compare it with the baseline, and make an
+        evidence-based registration and deployment decision.</p>
+      </div>
+    </aside>
+    <main>
+      <div class="page-heading">
+        <div><p class="eyebrow">FINE-TUNING WORKFLOW</p><h2 id="run-title">SLM Studio</h2><p id="run-meta" class="muted">Loading your workspace...</p></div>
+        <span id="run-status" class="badge">LOADING</span>
+      </div>
+      <div id="error" class="error" role="alert" hidden></div>
+      <nav id="stage-nav" class="stage-nav" aria-label="Workflow stages"></nav>
+      <div id="wizard-status" class="wizard-status" aria-live="polite"></div>
+      <section id="progress-panel" class="progress-panel" aria-live="polite" hidden>
+        <div><strong id="progress-label">Stage progress</strong><span id="progress-value"></span></div>
+        <progress id="stage-progress" max="100" value="0">0%</progress>
+        <small>Progress updates appear here while a stage is running.</small>
+      </section>
+      <section id="preparation-log-panel" class="progress-panel" hidden>
+        <h3 id="job-log-title">Preparation job status</h3>
+        <p id="preparation-status" role="status" aria-live="polite">Loading preparation log...</p>
+        <small id="preparation-log-updated"></small>
+        <details>
+          <summary>Recent job logs</summary>
+          <pre id="preparation-log"></pre>
+        </details>
+      </section>
+      <div id="task-controls" hidden>
+        <p class="hint">Cancel stops local work and monitoring. Azure jobs or allocated resources may remain billable; check Azure ML before retrying.</p>
+        <button id="cancel-task" type="button">Cancel task</button>
+      </div>
+
+      <section id="panel-data_preparation" class="panel">
+        <p class="eyebrow">STAGE 01</p><h2>Prepare training data</h2>
+        <p class="muted">Choose your data folder and generation recipe, then review the resulting data card.</p>
+        <div id="data-summary"></div>
+        <form id="create-form">
+          <div class="form-grid">
+            <label>Data folder<input name="source_folder" value="data/" maxlength="240" required></label>
+            <label>Generation recipe<select name="recipe" aria-describedby="recipe-explanation"><option value="context-grounded">Context-grounded (RAFT)</option><option value="context-assisted" disabled>Context-assisted (RAG) — training unavailable</option></select></label>
+            <label>Number of samples (total)<input name="num_samples" type="number" value="300" min="3" max="100000" step="1" aria-describedby="sample-count-note" required></label>
+          </div>
+          <p id="sample-count-note" class="hint">Default: 300 total samples, targeting about 30 test examples with the source-grouped 80/10/10 split. Release requires at least 30 actual sealed-test examples. Group sizes can change the split counts; review the data card and generate more samples if needed. Smaller datasets remain available for experiments.</p>
+          <p id="recipe-explanation" class="hint">RAFT builds training examples with relevant and distractor documents. RAG retrieves supporting documents when answering; it is not a fine-tuning method by itself.</p>
+          <div id="production-options" class="form-grid">
+            <label>Questions per generation call<input name="num_questions" type="number" value="5" min="1" max="100" step="1" required></label>
+            <label>Oracle probability<input name="oracle_probability" type="number" value="0.8" min="0" max="1" step="any" required></label>
+            <label>Azure ML data asset name<input name="data_asset_name" value="slm-studio-data" required></label>
+          </div>
+          <label class="check"><input name="confirmed" type="checkbox" required><span id="confirmation-label">I confirm billable GPT generation, PDF extraction, and Azure ML data publication.</span></label>
+          <button class="primary" type="submit">Prepare data</button>
+        </form>
+      </section>
+
+      <section id="panel-training" class="panel" hidden>
+        <p class="eyebrow">STAGE 02</p><h2>Configure fine-tuning</h2>
+        <p class="muted">Review the default parameters and adjust them for your dataset before starting training.</p>
+        <div id="training-summary"></div>
+        <form id="training-form">
+          <div id="production-dataset-options">
+            <h3>Training dataset</h3>
+            <div class="form-grid">
+              <label>Dataset source<select name="dataset_source"><option value="runs">Published Studio dataset</option><option value="manual">Existing Azure dataset ID</option></select></label>
+              <label>Dataset style<select name="dataset_recipe"><option value="context-grounded">Context-grounded (RAFT)</option><option value="context-assisted">Context-assisted (RAG) — training unavailable</option></select></label>
+              <label id="dataset-run-field">Published dataset<select name="dataset_run_id"></select></label>
+              <label id="dataset-id-field" hidden>Azure dataset ID<input name="dataset_id" placeholder="azureml:dataset-name:version" maxlength="300" disabled></label>
+            </div>
+            <button id="dataset-format-help" type="button">Expected dataset format</button>
+            <p id="dataset-selection-note" class="hint"></p>
+          </div>
+          <div class="form-grid">
+            <label id="production-base-model-field">Foundry base model<input name="production_base_model" value="Llama-3.2-3B-Instruct" list="production-models" required><datalist id="production-models"></datalist></label>
+            <label>Maximum sequence length<input name="max_seq_length" type="number" value="2048" min="128" max="32768" step="1" required></label>
+            <label>Batch size<input name="batch_size" type="number" value="2" min="1" max="64" step="1" required></label>
+            <label>Gradient accumulation<input name="gradient_accumulation" type="number" value="16" min="1" max="256" step="1" required></label>
+            <label>Learning rate<input name="learning_rate" type="number" value="0.00002" min="0.0000001" max="0.01" step="any" required></label>
+            <label>Epochs<input name="epochs" type="number" value="1" min="0" max="100" step="any" required></label>
+            <label>LoRA rank<input name="lora_rank" type="number" value="8" min="1" max="256" step="1" required></label>
+          </div>
+          <div id="production-trainer-options">
+            <h3>Additional trainer settings</h3>
+            <div class="form-grid">
+              <label>Chat template<input name="chat_template" value="llama-3.2" maxlength="100" required></label>
+              <label>LoRA adapter name<input name="lora_adapter_name" value="finetuned_adapter" maxlength="100" required></label>
+              <label>Random seed<input name="seed" type="number" value="42" min="0" max="4294967295" step="1" required></label>
+            </div>
+            <label class="check"><input name="load_in_4bit" type="checkbox">Load the base model in 4-bit precision</label>
+            <p class="hint">Sequence length is a fallback: the trainer selects the chat-template token-length p95. Precision is hardware-selected (bf16/fp16). The current recipe fixes LoRA alpha to twice the rank, dropout to 0, rsLoRA on, warmup to 0.03, a linear scheduler, and paged AdamW 8-bit. Azure compute and environment settings remain on the backend.</p>
+          </div>
+          <label class="check"><input name="confirmed" type="checkbox" required><span id="training-confirmation-label">I confirm the dataset, trainer settings, and billable Azure GPU training job.</span></label>
+          <button id="train" class="primary" type="submit">Start training</button>
+        </form>
+        <dialog id="dataset-format-dialog" aria-labelledby="dataset-format-title">
+          <h3 id="dataset-format-title">Expected dataset format</h3>
+          <p id="dataset-format-description"></p>
+          <pre id="dataset-format-example"></pre>
+          <form method="dialog"><button type="submit">Close</button></form>
+        </dialog>
+      </section>
+
+      <section id="panel-evaluation" class="panel" hidden>
+        <p class="eyebrow">STAGE 03</p><h2>Compare the candidate</h2>
+        <p class="muted">Compare the fine-tuned SLM, original SLM, and GPT baseline on the same sealed test split.</p>
+        <div id="production-evaluation-options">
+          <label for="evaluation-job">Completed training job</label>
+          <select id="evaluation-job" aria-describedby="evaluation-job-note"></select>
+          <p id="evaluation-job-note" class="hint">Choose a saved training job before confirming evaluation. Missing historical parameters are shown as not recorded.</p>
+          <div id="evaluation-job-summary"></div>
+          <p class="hint">Uses the judge deployment configured on the backend. Reuses this job's recorded GPT baseline when available; otherwise creates one. GPU inference and judge calls are billable.</p>
+        </div>
+        <div id="evaluation-metrics" class="table-wrap"></div>
+        <section id="evaluation-showcase" class="evaluation-showcase" aria-labelledby="evaluation-showcase-title">
+          <div class="showcase-heading">
+            <div>
+              <p class="eyebrow">AZURE EVALUATION EVIDENCE</p>
+              <h3 id="evaluation-showcase-title">Response-level model comparison</h3>
+            </div>
+            <span class="badge succeeded">REAL RUN</span>
+          </div>
+          <p id="showcase-provenance" class="hint"></p>
+          <div id="showcase-metrics" class="metric-cards"></div>
+          <div class="evidence-filters" role="search">
+            <label>Search query or answer
+              <input id="evidence-search" type="search" placeholder="Filter evaluation records">
+            </label>
+            <label>Record type
+              <select id="evidence-type">
+                <option value="">All types</option>
+                <option value="oracle">Oracle</option>
+                <option value="distractor">Distractor</option>
+              </select>
+            </label>
+            <label>Correctness comparison
+              <select id="evidence-comparison">
+                <option value="">All results</option>
+                <option value="fine_tuned_better">Fine-tuned beats original</option>
+                <option value="gpt_better">GPT beats fine-tuned</option>
+                <option value="ties">Tied correctness</option>
+              </select>
+            </label>
+          </div>
+          <p id="evidence-count" class="hint" aria-live="polite"></p>
+          <div class="table-wrap evidence-grid-wrap">
+            <table class="evidence-grid">
+              <caption>Query, reference answer, and generated answers from the complete sealed test evaluation</caption>
+              <thead><tr>
+                <th>Query</th><th>CoT answer</th><th>GPT answer</th>
+                <th>Original SLM answer</th><th>Fine-tuned SLM answer</th>
+              </tr></thead>
+              <tbody id="evidence-rows"></tbody>
+            </table>
+          </div>
+        </section>
+        <div id="evaluation-summary"></div>
+        <form id="evaluation-form">
+          <label class="check"><input name="confirmed" type="checkbox" required><span id="evaluation-confirmation-label">I confirm the selected training job, sealed test split, and billable GPU inference and judge calls.</span></label>
+          <button id="evaluate" class="primary" type="submit">Run evaluation</button>
+        </form>
+      </section>
+
+      <section id="panel-decision" class="panel" hidden>
+        <p class="eyebrow">STAGE 04</p><h2>Approve and release the candidate</h2>
+        <p class="muted">Review immutable quality policy and complete lineage. Register only, or review a GPU cost estimate before registration and deployment.</p>
+        <div id="production-release-options">
+          <label>Recent completed evaluation<select id="release-evaluation"></select></label>
+          <div id="release-readiness"></div>
+          <form id="release-plan-form">
+            <div class="form-grid">
+              <label>Action<select name="action"><option value="register">Register candidate only</option><option value="register_and_deploy">Register and deploy (GPU cost applies)</option></select></label>
+              <label>Registered model name<input name="model_name" value="slm-studio-candidate" required maxlength="100"></label>
+            </div>
+            <div id="release-deployment-options" hidden>
+              <div class="form-grid">
+                <label>New dedicated endpoint name<input name="endpoint_name" placeholder="slm-candidate" maxlength="32"></label>
+                <label>Monitoring CPU cluster<input name="monitor_compute" value="cpu-cluster"></label>
+              </div>
+              <label>Governed production request folder URI<input name="production_data_uri" placeholder="azureml://datastores/.../paths/production-requests"></label>
+              <p class="hint">A maintained JSONL request stream with instruction and question strings is required. Do not use training/test data or raw collector telemetry. Scoring collection and weekly request-feature PSI monitoring are enabled; monitoring compute/storage also incur costs.</p>
+            </div>
+            <label class="check"><input name="confirmed" type="checkbox" required>I confirm evidence verification and GPT-assisted sizing calls when deploying. Planning allocates no GPU.</label>
+            <button id="plan-release" type="submit" class="primary">Review release plan</button>
+          </form>
+          <form id="release-approval-form" hidden>
+            <div class="form-grid">
+              <label>Approver<input name="actor" value="local-user" required maxlength="100"></label>
+              <label>Approval reason<input name="reason" placeholder="Reviewed policy, lineage and planned resources" required maxlength="2000"></label>
+            </div>
+            <label id="gpu-cost-confirmation" class="check"><input name="accept_gpu_cost" type="checkbox">I accept the displayed hourly GPU estimate and ongoing allocation charges, plus monitoring and storage costs.</label>
+            <label class="check"><input name="confirmed" type="checkbox" required>I approve this exact release plan. Blocked gates cannot be overridden.</label>
+            <button id="approve-release" type="submit" class="primary">Approve release</button>
+          </form>
+        </div>
+        <div id="decision-summary"></div>
+        <div id="deployment-summary"></div>
+      </section>
+
+      <nav class="wizard-actions" aria-label="Wizard navigation">
+        <button id="wizard-back" type="button">Back</button>
+        <span id="wizard-position" class="hint"></span>
+        <button id="wizard-next" type="button">Next</button>
+      </nav>
+
+      <details class="record-panel">
+        <summary>Inspect the complete run record</summary>
+        <p class="hint">Workflow state, lineage, evaluation evidence, and decision audit.</p>
+        <button id="download" type="button">Download record as JSON</button>
+        <pre id="run-record">No run selected.</pre>
+      </details>
+    </main>
+  </div>
+  <footer>SLM Studio &middot; Fine-tuning workspace</footer>
+</body>
+</html>

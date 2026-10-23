@@ -1,0 +1,21 @@
+/** HTTP contract for the production API. */
+export async function api(path, body) {
+  if (path.startsWith("/api/") && !path.startsWith("/api/production/")) {
+    path = path.replace("/api/", "/api/production/");
+  }
+  const response = await fetch(path, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    const detail = result.detail;
+    const message = typeof detail === "string" ? detail :
+      Array.isArray(detail) ? detail.map((issue) => `${issue.loc.join(".")}: ${issue.msg}`).join("; ") :
+      typeof detail?.message === "string" ? `${detail.message} ${(detail.readiness?.reasons ?? []).join(" ")}`.trim() :
+      `API returned ${response.status}.`;
+    throw new Error(message);
+  }
+  return result;
+}

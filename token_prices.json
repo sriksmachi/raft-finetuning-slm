@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "currency": "USD",
+  "unit": "per_million_tokens",
+  "models": {
+    "gpt-4.1": {"input": null, "output": null},
+    "gpt-4.1-mini": {"input": null, "output": null},
+    "gpt-5.2": {"input": null, "output": null}
+  }
+}
