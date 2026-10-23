@@ -1,230 +1,179 @@
-# SLM Studio
+# 🧪 SLM Studio
 
-Prepare data, fine-tune, evaluate, register candidates, and deploy approved Azure ML endpoints.
-All operations use real services. GPU and GPT charges apply.
+**Turn domain documents into evaluated, release-ready small language model candidates.**
 
-## 1. Start the app
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](environments/train-conda.yml)
+[![Azure Machine Learning](https://img.shields.io/badge/Azure-Machine%20Learning-0078D4)](https://azure.microsoft.com/products/machine-learning)
+[![Built with FastAPI](https://img.shields.io/badge/Built%20with-FastAPI-009688?logo=fastapi&logoColor=white)](app/main.py)
 
-1. Open a terminal in the repository root.
-2. Install the app dependencies:
+SLM Studio is a local web application and Python workflow for preparing
+document-grounded training data, fine-tuning small language models (SLMs),
+comparing them with their original model and a GPT baseline, and registering
+or deploying candidates on Azure Machine Learning after explicit approval.
 
-   ```powershell
-   python -m pip install -r app\requirements.txt
-   ```
+[Getting started](#installation-and-quick-start) ·
+[Step-by-step usage guide](docs/how_to_use.md) ·
+[Architecture](docs/architecture-png.png)
 
-3. Start SLM Studio:
+## 🎯 The problem
 
-   ```powershell
-   python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-   ```
+General-purpose models are not automatically reliable on an organization's
+specialized documents. Frontier-model APIs can also introduce latency and
+usage costs that make a smaller, domain-adapted model worth investigating.
+But fine-tuning alone does not demonstrate that a smaller model is better,
+close enough to a GPT baseline, or ready to serve.
 
-4. Open <http://127.0.0.1:8000>.
+SLM Studio connects that experiment into one traceable workflow: create
+grounded examples from PDFs, train a candidate, measure quality and latency
+on a sealed test split, and require evidence and human approval before release.
+It helps determine **whether** an SLM is suitable for a workload rather than
+assuming that fine-tuning guarantees quality or savings.
 
-Keep the app local. It has no multi-user authentication.
+## 🧭 Key objectives
 
-## 2. Prepare data
+- **Ground adaptation in your documents.** Generate context-grounded RAFT
+  (Retrieval-Augmented Fine-Tuning) examples from PDFs.
+- **Make experiments traceable.** Preserve versioned data, training settings,
+  Azure job references, and evaluation lineage.
+- **Measure before releasing.** Compare the fine-tuned SLM, original SLM, and
+  GPT using faithfulness, relevancy, correctness, latency, and token usage.
+- **Enforce evidence-based release.** Apply fixed quality gates and explicit
+  human approval rather than automatically deploying every trained model.
+- **Make costs visible.** Surface billable operations, configured frontier-token
+  estimates, and deployment GPU estimates before approval.
 
-### Set up Azure access
+## 🔄 From documents to deployment
 
-1. Install the project dependencies:
+**PDFs → Grounded dataset → Fine-tuned SLM → Comparative evaluation → Approved candidate → Optional endpoint**
 
-   ```powershell
-   python -m pip install -r requirements.txt -r app\requirements.txt
-   ```
+| Stage | What you do | Outputs you can produce |
+| --- | --- | --- |
+| 📚 Prepare data | Extract PDF content and generate grounded examples | Validated train/validation/test JSONL splits, dataset fingerprint, and a versioned Azure ML data asset |
+| 🛠️ Fine-tune | Select a base model and configure LoRA training | Azure ML training jobs, adapter artifacts, logs, and training lineage |
+| 📊 Evaluate | Test the candidate against the original SLM and GPT | Quality and latency metrics, response-level comparisons, token usage, and configured API cost estimates |
+| ✅ Register | Review release-policy evidence and approve a candidate | A registered Azure ML model linked to its evaluation evidence |
+| 🚀 Deploy | Review and approve a dedicated deployment plan | An authenticated Azure ML endpoint, scoring validation, and monitoring configuration |
 
-2. Sign in with an account that can access your Azure OpenAI deployment and Azure ML workspace:
+The Studio exposes four tabs: **Data**, **Fine-tuning**, **Evaluation**, and
+**Candidate release**. Registration and optional deployment share the last tab;
+the command-line workflow provides five separate stage scripts.
 
-   ```powershell
-   az login
-   ```
+### Release is gated, not automatic
 
-3. Set these values in a local `.env` file:
-   - `AZURE_SUBSCRIPTION_ID`
-   - `AZURE_RESOURCE_GROUP`
-   - `AZUREML_WORKSPACE_NAME`
-   - `AZURE_OPENAI_ENDPOINT`
-   - `AZURE_OPENAI_API_VERSION`
-   - `AZURE_OPENAI_GPT_DEPLOYMENT`
-4. Start or restart the app using the command in Step 1.
+Candidates need at least **30 sealed-test examples**. Each quality metric must
+show at least **2 percentage points** of mean uplift over the original SLM,
+strictly **less than 5%** relative shortfall from GPT, and a paired-bootstrap
+**95% uplift interval strictly above zero**. A narrowly defined perfect-baseline
+tie exception applies; see the [complete release rules](docs/how_to_use.md#5-release-a-candidate).
+Latency and token costs are informational, not release gates.
 
-Do not commit credentials. Production preparation makes billable GPT calls and publishes an Azure ML data asset.
+## Installation and quick start
 
-### Generate a dataset
+### Prerequisites
 
-1. Open **Data**.
-2. Use the default `data/` folder, or enter another folder containing PDFs that the app's computer can access.
-3. Choose **Context-grounded (RAFT)**. Context-assisted generation is not available in production.
-4. Set **Number of samples (total)**:
-   - This is the exact total across train, validation, and test.
-   - Default: **300 total**, targeting about 30 test examples with an 80/10/10 source-grouped split.
-   - Release requires **30 actual sealed-test examples**. Group sizes can change the counts; 300 total is not a guarantee.
-   - Request at least 3 samples.
-   - Provide enough PDF content for at least 5 distinct usable chunks.
-5. Adjust **Questions per generation call**, **Oracle probability**, and **Azure ML data asset name** if needed.
-6. Confirm the billable operation and click **Prepare data**.
-7. Watch **Preparation job status** for the latest activity; it refreshes every 10 seconds.
-8. Expand **Recent job logs** to inspect page extraction, sample generation, validation, and publication messages.
-9. After completion, review:
-   - Generated sample count and split counts.
-   - **Release sample-count check:** fewer than 30 test examples requires more data before release evaluation. A passing sample-count check does not mean the quality gates have passed.
-   - Validation result and dataset fingerprint.
-   - Azure ML data asset reference.
-   - The **Sample data** table: every generated field, including context, oracle context, CoT answer, and instruction, with up to two samples per split.
+- **Git and Python 3.12**; Azure ML environment definitions use Python 3.12.10.
+- **Azure CLI** for signing in.
+- For production operations: an **Azure ML workspace**, an **Azure OpenAI GPT
+  deployment**, and permissions to use the required resources.
+- For training/evaluation: dedicated **Azure ML GPU compute**, managed identity,
+  and suitable quota. Review backend compute and identity settings before
+  submission; local installation does not provision these prerequisites.
+- For deployment: regional GPU capacity, an existing CPU monitoring cluster,
+  and a governed production-request folder.
 
-### Review or retry a run
+### 1. Clone and install
 
-1. Select a run from **Recent runs**.
-2. Click **Refresh** to see its latest status.
-3. Review the saved results or displayed error.
-4. If preparation failed or was interrupted, resolve the error before submitting a new run.
-
-- Run one production operation at a time using one local app instance.
-- While any task is running, submission forms are hidden across all stages. Use **Cancel task** to stop local work and monitoring and restore the forms. Cancellation is saved in the run history.
-- Cancelling does not guarantee remote Azure jobs stop or delete allocated resources. For training and evaluation, check the Azure ML job link and cancel the cloud job there; for releases, inspect saved models and endpoints for billable resources before retrying.
-- Completed results remain available after refreshing or restarting.
-- Each new production submission creates a new run and data-asset version.
-- Studio leaves the dataset name unchanged and uses `data-DDMMYYHHMMSS` (UTC) as its version.
-- Versions are 17 characters, within Azure ML's 30-character limit; duplicate name/version submissions are rejected.
-
-If only publication failed, reuse the prepared dataset without generating it again:
+Run these commands in **Windows PowerShell**:
 
 ```powershell
-python scripts\01_prepare_data.py --skip-generation `
-  --dataset-dir "runs\production\<run-id>\dataset" `
-  --data-asset-name "slm-studio-data" `
-  --data-asset-version "1"
+git clone https://github.com/sriksmachi/raft-finetuning-slm.git
+Set-Location raft-finetuning-slm
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt -r app\requirements.txt
 ```
 
-Replace the run ID and asset name with your failed run's values.
-Choose an unused version of 1 to 30 characters.
-This publishes the data asset; the original Studio run remains marked failed.
+Only opening the interface? Install [app/requirements.txt](app/requirements.txt)
+alone instead. The production stages also need [requirements.txt](requirements.txt).
+GPU training and inference run in Azure ML environments, not in the local web app.
 
-## 3. Fine-tune a model
+### 2. Configure Azure
 
-1. Open **Fine-tuning**.
-2. Choose a successfully published dataset from a previous preparation run.
-3. To use another Azure dataset, choose **Existing Azure dataset ID** and enter `azureml:dataset-name:version`.
-4. Review the format popup. RAFT assets need `train.jsonl` and `validation.jsonl` with the required grounded fields; keep `test.jsonl` for evaluation. RAG training is not available.
-5. Choose a Foundry base model and review all trainer settings:
-   - Sequence-length fallback, learning rate, epochs, batch size, and gradient accumulation.
-   - LoRA rank, adapter name, chat template, seed, and 4-bit loading.
-6. Confirm the dataset, settings, and GPU charges, then click **Start training**.
-7. Watch **Fine-tuning job status**; the UI polls the run log every 10 seconds.
-8. Expand **Recent job logs** for submission, streamed training logs, Azure job status heartbeats, completion, or errors. Status is logged every 10 seconds while waiting for Azure.
-9. Open the saved Azure ML job link for detailed training progress and GPU trainer logs.
+```powershell
+az login
+```
 
-- Selecting or reloading a fine-tuning run with an unresolved Azure job status fetches its latest status directly from Azure ML, even if the local monitor failed or was interrupted. Polling continues while Azure reports the job active and stops when it finishes. Confirmed Azure completions/failures and user-cancelled runs are not queried again. A local monitoring error does not mean the Azure job failed.
-- Azure compute, managed identity, and environment use the existing backend configuration.
-- Each submission creates a separate training run and preserves the source preparation run.
-- If monitoring is interrupted, check the saved Azure job before retrying. Stopping the app does not cancel the remote job.
+Create a local `.env` file in the repository root with your resource values:
 
-## 4. Evaluate a trained model
+```dotenv
+AZURE_SUBSCRIPTION_ID=<subscription-id>
+AZURE_RESOURCE_GROUP=<resource-group>
+AZUREML_WORKSPACE_NAME=<workspace-name>
+AZURE_OPENAI_ENDPOINT=https://<resource-name>.openai.azure.com/
+AZURE_OPENAI_API_VERSION=<supported-api-version>
+AZURE_OPENAI_GPT_DEPLOYMENT=<gpt-deployment-name>
+```
 
-1. Open **Evaluation**.
-2. Choose a **Completed training job** saved in the runs folder.
-3. Review its training date, model, dataset version, sample count, epochs, and adapter name.
-   - Older jobs may show **Not recorded** for unavailable parameters.
-4. Keep the judge configuration on the backend:
-   - `AZURE_OPENAI_GPT_DEPLOYMENT` selects the GPT comparison model and default judge.
-   - Optionally set `AZURE_OPENAI_JUDGE_DEPLOYMENT` for a separate judge.
-5. Confirm the job, sealed test split, GPU costs, and judge calls; click **Run evaluation**.
-6. The app reuses the job's recorded GPT baseline when available; otherwise it generates a new baseline first.
-7. Watch **Evaluation job status** and **Recent job logs**; the UI polls every 10 seconds.
-8. Review the metrics table for the fine-tuned model, original SLM, and GPT baseline:
-   - Faithfulness, relevancy, correctness, mean latency, and p95 latency.
-   - Input/output token counts; model-specific frontier API cost estimates when configured.
-9. Search or filter the response-level comparison, or open the themed **Azure ML** job link.
+Keep credentials out of source control. Follow the
+[Azure access and compute guidance](docs/how_to_use.md#2-prepare-data) before
+submitting work. An optional `AZURE_OPENAI_JUDGE_DEPLOYMENT` selects a separate
+evaluation judge.
 
-Evaluation creates a separate run and preserves the selected training run.
-Baseline dataset and judge mismatches fail visibly; they are not silently replaced.
-If monitoring is interrupted, check the saved Azure job before retrying.
+### 3. Launch Studio
 
-If a local receipt-file access error interrupts monitoring after the SLM evaluation
-was submitted, select the existing run or refresh the page. Studio checks the
-saved Azure evaluation job, resumes polling while it is active, and downloads and
-validates its evidence when it completes. It does not submit another evaluation
-or regenerate the GPT baseline. Receipt reads and atomic replacements retry
-temporary Windows sharing violations; persistent access errors remain visible.
+```powershell
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-### Configure frontier token prices
+Open **<http://127.0.0.1:8000>**.
 
-1. Open `token_prices.json`.
-2. Enter USD per million input/output tokens for the exact model, such as `gpt-4.1`, `gpt-4.1-mini`, or `gpt-5.2`.
-3. Add another explicit frontier model ID if needed. Do not use deployment aliases or SLM names.
-4. Leave unknown prices as `null`. Unknown model identities, prices, or usage show unavailable, not zero.
-5. Run a new evaluation. Its recorded API model identities select the matching prices; dated snapshots can match their exact model family.
-6. Review inference and judge usage separately. Reused GPT baseline usage is historical, not newly incurred.
+### 4. Run your first workflow
 
-Self-hosted SLMs show token counts but no per-token tariff. GPU hourly costs are separate.
-Estimates use standard input/output rates without cached-input discounts. Each evaluation saves its price snapshot.
+1. **Data:** select a local PDF folder and prepare a context-grounded RAFT dataset.
+2. **Fine-tuning:** select the published dataset and base model, review trainer
+   settings, and submit training.
+3. **Evaluation:** select the completed training job and run the sealed-test
+   comparison against the original SLM and GPT.
+4. **Candidate release:** inspect the policy results and lineage, then explicitly
+   approve registration only or registration with deployment.
 
-## 5. Release a candidate
+Use the [stage-by-stage guide](docs/how_to_use.md) for detailed instructions,
+monitoring, retries, token-price configuration, and command-line alternatives.
 
-1. Open **Candidate release**.
-2. Select a recent completed evaluation.
-3. Review the **Release policy** table and the separate **Data preparation**, **Training**, and **Evaluation** lineage tables.
-4. Every quality metric—faithfulness, relevancy and correctness—must meet all conditions:
-   - At least **30** sealed-test examples.
-   - At least **2 percentage points** mean uplift over the original SLM.
-   - Strictly **less than 5%** relative shortfall from GPT.
-   - A paired-bootstrap **95% uplift interval strictly above zero**: 5,000 resamples, seed 42.
-   - **Perfect-baseline exception:** if the original SLM scores exactly 100% for a metric, the fine-tuned model must also score exactly 100% on every test example. Only that metric's uplift and positive-confidence requirements are waived. The UI labels this **PASS (PERFECT TIE)**; all other requirements still apply.
-5. Check the badges: **green PASS**, **red FAIL**, or **gray NOT RECORDED**. Each metric has separate uplift, GPT-gap, and confidence gates. Sample count has its own gate.
-   - Any failed requirement blocks release. Latency and token costs are informational.
-   - The policy cannot be edited or overridden.
-6. Choose **Register candidate only** or **Register and deploy**, then **Review release plan**.
-7. For deployment, provide a new dedicated endpoint name, an existing CPU monitoring cluster, and a maintained governed production-request folder.
-   - Monitoring requests must be JSONL with `instruction` and `question` strings.
-   - Training/test data and raw collector telemetry are not production monitoring streams.
-8. Review GPT's GPU SKU recommendation, regional Azure retail hourly estimate, fp16 serving budget and plan expiry.
-9. Enter approver and reason; confirm the exact plan. For deployment, also accept the displayed ongoing GPU cost.
-10. Click **Approve release**. Watch status/logs every 10 seconds.
-11. Registration-only creates no endpoint or GPU. In the same **Candidate release** tab, review deployment status, scoring validation, monitoring and the authenticated endpoint URI. There is no separate fifth tab.
+> ⚠️ **Real services, real costs.** Data generation and judging call Azure OpenAI;
+> training, evaluation, and deployment use billable Azure resources. Allocated
+> deployment GPUs keep accruing charges. Cancelling local work does not guarantee
+> remote jobs stop or resources are deleted.
+>
+> 🔒 **Local control plane.** Studio has no multi-user authentication. Keep it
+> bound to localhost, run one production operation at a time, and do not expose
+> the app as a public service.
 
-Plans expire after 30 minutes. GPU charges continue while resources are allocated; monitoring/storage cost extra.
-If deployment fails or monitoring stops, inspect the saved model and endpoint before retrying. Resources are not automatically deleted.
-The tool does not manage canary traffic or rollout policies.
+## 📁 Repository map
 
-## 6. Use command-line stages
+| Location | Purpose |
+| --- | --- |
+| [app/](app/) | FastAPI web app, workflow APIs, frontend, and app tests |
+| [lib/](lib/) | Shared data, training, evaluation, Azure ML, and release logic |
+| [scripts/](scripts/) | Five command-line workflow stages and supporting utilities |
+| [environments/](environments/) | Azure ML training and inference environment definitions |
+| [notebooks/](notebooks/) | Notebook workflows |
+| [docs/](docs/) | [Usage guide](docs/how_to_use.md) and architecture assets |
 
-1. Use the same Azure setup above.
-2. Check the required options for each stage:
+Local run records and evidence are saved under `runs/production/`.
 
-   ```powershell
-   python scripts\01_prepare_data.py --help
-   python scripts\02_azureml_fine_tuning.py --help
-   python scripts\03_azureml_slm_vs_gpt_evaluation.py --help
-   python scripts\04_release_candidate.py --help
-   python scripts\05_deployment_gate.py --help
-   ```
+## 🧪 Development checks
 
-3. Prepare data, or use the Azure ML data asset created in the UI.
-4. Submit fine-tuning with the selected base model and dataset.
-5. Run evaluation with `--mode llm_baseline`, then `--mode slm_evaluation` using that baseline version.
-6. Stage 04 now accepts a completed Studio `--evaluation-record` and registers only after fixed-policy validation and explicit approval.
-7. Stage 05 first writes a deployment plan without allocating GPUs. Review its SKU, hourly estimate and hash.
-8. Approve with `--plan-file`, `--accept-plan-sha256`, `--approved-by`, `--approval-reason` and `--approve`.
-
-Stage 04/05 intentionally replace the former zero-traffic/promotion CLI. Traffic-percentage and editable quality-policy arguments are no longer accepted.
-
-Review Azure costs, permissions, compute, and release settings before running these stages.
-
-## 7. Check the installation
-
-Run the fast, credential-free production integration tests:
+Run the fast, credential-free production integration checks from the repository root:
 
 ```powershell
 python -m pytest app\tests\test_production_api.py app\tests\test_training_api.py app\tests\test_evaluation_api.py app\tests\test_candidate_api.py -q
 ```
 
-For all app tests:
+See [installation checks](docs/how_to_use.md#7-check-the-installation) for the full
+app test suite and optional Node.js UI polling tests.
 
-```powershell
-python -m pytest app\tests -q
-```
+## 📄 License
 
-To check the 10-second UI polling behavior (requires Node.js):
-
-```powershell
-node --test app\tests\test_ui_polling.mjs
-```
+SLM Studio is distributed under the [MIT License](LICENSE).
