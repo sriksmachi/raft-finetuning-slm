@@ -29,7 +29,6 @@ Examples:
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import sys
@@ -50,6 +49,7 @@ from lib.azureml_ops import (
     submit_finetuning_job,
 )
 from lib.config import AzureMLConfig
+from lib.job_receipts import write_receipt
 from lib.lora_artifacts import adapter_name_from_model
 from lib.run_registry import record_run
 
@@ -166,8 +166,6 @@ def write_job_receipt(job, args: argparse.Namespace, status: str) -> None:
     if not getattr(args, "receipt_path", None):
         return
     path = Path(args.receipt_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".pending")
     payload = {
         "job_name": job.name, "job_id": job.id,
         "job_uri": getattr(job, "studio_url", None),
@@ -175,8 +173,7 @@ def write_job_receipt(job, args: argparse.Namespace, status: str) -> None:
         "model_artifact": f"azureml://jobs/{job.name}/outputs/model/paths/",
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    os.replace(temporary, path)
+    write_receipt(path, payload)
 
 
 def monitor_training_job(ml_client, job_name: str, args: argparse.Namespace):

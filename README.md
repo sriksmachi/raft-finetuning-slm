@@ -139,6 +139,13 @@ Evaluation creates a separate run and preserves the selected training run.
 Baseline dataset and judge mismatches fail visibly; they are not silently replaced.
 If monitoring is interrupted, check the saved Azure job before retrying.
 
+If a local receipt-file access error interrupts monitoring after the SLM evaluation
+was submitted, select the existing run or refresh the page. Studio checks the
+saved Azure evaluation job, resumes polling while it is active, and downloads and
+validates its evidence when it completes. It does not submit another evaluation
+or regenerate the GPT baseline. Receipt reads and atomic replacements retry
+temporary Windows sharing violations; persistent access errors remain visible.
+
 ### Configure frontier token prices
 
 1. Open `token_prices.json`.

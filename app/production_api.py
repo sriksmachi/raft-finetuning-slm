@@ -12,7 +12,12 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from app.candidate_api import CandidateAPI
-from app.evaluation import evaluate_model, training_jobs
+from app.evaluation import (
+    evaluate_model,
+    evaluation_needs_refresh,
+    refresh_evaluation,
+    training_jobs,
+)
 from app.models import (
     ProductionEvaluation,
     ProductionPreparation,
@@ -39,6 +44,7 @@ class ProductionAPI:
         self.training_status_reader = training_status
         self.training_records: dict[str, dict] = {}
         self.evaluation_runner = evaluate_model
+        self.evaluation_refresher = refresh_evaluation
         self.ledger_dir = self.store.directory.parent
         self.router = APIRouter(prefix="/api/production")
         self.router.add_api_route("/config", self.config, methods=["GET"])
@@ -107,6 +113,8 @@ class ProductionAPI:
 
     async def read_latest(self, run_id: str):
         record = await self.read(run_id)
+        if record.get("run_type") == "evaluation":
+            return await self.read_latest_evaluation(record)
         training = record.get("training") or {}
         if not training_needs_refresh(record):
             return record
@@ -127,6 +135,8 @@ class ProductionAPI:
             succeeded = status == "Completed"
             cancelled = status in {"Canceled", "Cancelled"}
             message = None if succeeded else f"Azure ML training ended with status: {status}."
+            if not succeeded and record["stages"]["training"]["error"]:
+                message += f" {record['stages']['training']['error']}"
             record["stages"]["training"].update(
                 status="succeeded" if succeeded else "cancelled" if cancelled else "failed",
                 error=message, completed_at=now(),
@@ -143,6 +153,49 @@ class ProductionAPI:
             record["updated_at"] = now()
             append_job_status(self.store.directory / run_id,
                               f"Azure ML fine-tuning job {job_name}: {status}", "training.log")
+            self.store.save(record)
+        return self.with_samples(record)
+
+    async def read_latest_evaluation(self, record: dict):
+        run_id = record["run_id"]
+        if not evaluation_needs_refresh(record) or any(
+            task.get_name().startswith(f"{run_id}:") and not task.done() for task in self.tasks
+        ):
+            return record
+        receipt = record["evaluation"]["jobs"]["slm_evaluation"]
+        job = record["evaluation"]["training_job"]
+        try:
+            updated, result = await asyncio.to_thread(
+                self.evaluation_refresher, job, self.store.directory / run_id, receipt,
+            )
+        except Exception as exc:
+            logger.exception("Unable to restore Azure ML evaluation for %s", run_id)
+            raise HTTPException(502, f"Unable to restore evaluation status or results from Azure ML: {exc}") from exc
+        record = self.store.read(run_id)
+        if (not evaluation_needs_refresh(record)
+                or record["evaluation"]["jobs"]["slm_evaluation"]["job_name"] != receipt["job_name"]):
+            return self.with_samples(record)
+        evaluation = record["evaluation"]
+        status = updated["status"]
+        changed = updated != evaluation["jobs"]["slm_evaluation"] or record["status"] == "failed"
+        evaluation["jobs"]["slm_evaluation"] = updated
+        evaluation.update(job_status=status, phase="slm_evaluation")
+        stage = record["stages"]["evaluation"]
+        if status == "Completed":
+            self.finish_evaluation(record, result, job)
+        elif status in {"Failed", "Canceled", "Cancelled"}:
+            cancelled = status in {"Canceled", "Cancelled"}
+            record["status"] = "cancelled" if cancelled else "failed"
+            stage.update(status=record["status"], completed_at=now(),
+                         error=f"Azure ML evaluation ended with status: {status}.")
+            audit(record, "evaluation_status_reconciled", job_name=updated["job_name"], job_status=status)
+        else:
+            record["status"] = "running"
+            stage.update(status="running", error=None, completed_at=None)
+        if changed or status == "Completed":
+            record["updated_at"] = now()
+            append_job_status(self.store.directory / run_id,
+                              f"Restored Azure ML evaluation job {updated['job_name']}: {status}", "evaluation.log")
             self.store.save(record)
         return self.with_samples(record)
 
@@ -210,8 +263,10 @@ class ProductionAPI:
         record = await self.read(run_id)
         task = next((task for task in self.tasks
                      if task.get_name().split(":")[0] == run_id and not task.done()), None)
-        detached_training = record.get("run_type") == "training" and (record.get("training") or {}).get("job_name")
-        if (record["status"] != "running" or (task is None and not detached_training)
+        detached_job = (
+            record.get("run_type") == "training" and (record.get("training") or {}).get("job_name")
+        ) or evaluation_needs_refresh(record)
+        if (record["status"] != "running" or (task is None and not detached_job)
                 or run_id in self.cancelling):
             raise HTTPException(409, "This task is not running or cancellation is already in progress.")
         if task is None:
@@ -431,14 +486,7 @@ class ProductionAPI:
 
         try:
             result = await self.evaluation_runner(job, directory, submitted)
-            if (result.get("candidate_id") != job["job_name"] or result.get("dataset_id") != job["dataset_id"]
-                    or result.get("job_status") != "Completed" or not result.get("metrics")):
-                raise ValueError("Evaluation results do not match the selected completed job and dataset.")
-            record["evaluation"].update(result)
-            stage.update(status="succeeded", progress=100, completed_at=now())
-            record["status"] = "ready"
-            audit(record, "evaluation_succeeded", actor="local-production-user", job_name=job["job_name"])
-            append_job_status(directory, "Evaluation completed. Metrics and response evidence are ready.", "evaluation.log")
+            self.finish_evaluation(record, result, job)
         except asyncio.CancelledError:
             if record["run_id"] in self.cancelling:
                 self.mark_cancelled(record)
@@ -458,6 +506,18 @@ class ProductionAPI:
         finally:
             record["updated_at"] = now()
             self.store.save(record)
+
+    def finish_evaluation(self, record: dict, result: dict | None, job: dict) -> None:
+        if (not result or result.get("candidate_id") != job["job_name"]
+                or result.get("dataset_id") != job["dataset_id"]
+                or result.get("job_status") != "Completed" or not result.get("metrics")):
+            raise ValueError("Evaluation results do not match the selected completed job and dataset.")
+        record["evaluation"].update(result)
+        record["stages"]["evaluation"].update(status="succeeded", progress=100, error=None, completed_at=now())
+        record["status"] = "ready"
+        audit(record, "evaluation_succeeded", actor="local-production-user", job_name=job["job_name"])
+        append_job_status(self.store.directory / record["run_id"],
+                          "Evaluation completed. Metrics and response evidence are ready.", "evaluation.log")
 
     async def execute(self, record: dict, body: ProductionPreparation):
         stage = record["stages"]["data_preparation"]

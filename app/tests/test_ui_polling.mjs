@@ -195,6 +195,7 @@ for (const status of ["running", "succeeded", "failed", "cancelled"]) {
     const calls = [];
     const run = {
       run_id: "prod-training", run_type: "training", status: "running",
+      training: {job_name: "azure-training-job", job_status: "Running"},
       current_stage: "training", stages: {training: {status: "running"}},
     };
     const latest = {
@@ -246,6 +247,7 @@ test("Azure errors on reload keep the running job rendered and polling retryable
   const { context, timers } = uiContext(async (path) => {
     if (path === "/api/runs") return {runs: [{
       run_id: "prod-training", run_type: "training", status: "running",
+      training: {job_name: "azure-training-job", job_status: "Running"},
       current_stage: "training", stages: {training: {status: "running"}},
     }]};
     throw new Error("Unable to fetch Azure ML status");
@@ -264,6 +266,37 @@ test("cancel controls have space before the next stage card", () => {
   const styles = readFileSync(new URL("../static/styles.css", import.meta.url), "utf8");
   assert.match(styles, /#task-controls\s*\{[^}]*margin-bottom:\s*24px/);
 });
+
+for (const azureStatus of ["Completed", "Running"]) {
+  test(`reload refreshes a locally failed monitor whose Azure job is ${azureStatus}`, async () => {
+    const calls = [];
+    const stale = {
+      run_id: "prod-f17f4a0ecad0493eba69c6160fe4a832", run_type: "training",
+      status: "failed", current_stage: "training",
+      training: {job_name: "cool_basil_nt640qk5hf", job_status: "Running"},
+      stages: {training: {status: "failed", error: "Training command exited with code 1."}},
+    };
+    const latest = {
+      ...stale, status: azureStatus === "Completed" ? "ready" : "running",
+      training: {...stale.training, job_status: azureStatus},
+      stages: {training: {status: azureStatus === "Completed" ? "succeeded" : "running", error: null}},
+    };
+    const { context, timers } = uiContext(async (path) => {
+      calls.push(path);
+      if (path.endsWith("/log")) return {run_id: stale.run_id, current_status: azureStatus};
+      return path === "/api/runs" ? {runs: [stale]} : latest;
+    });
+    vm.runInContext(`
+      config = {stage_order: ["training"]};
+      renderSelected = () => { renderTaskControls(); schedulePoll(); };
+    `, context);
+    await vm.runInContext("refresh()", context);
+    assert.ok(calls.includes(`/api/runs/${stale.run_id}`));
+    assert.equal(vm.runInContext("selected.training.job_status", context), azureStatus);
+    assert.equal(vm.runInContext("runs[0].status", context), latest.status);
+    assert.equal(timers.length, azureStatus === "Running" ? 1 : 0);
+  });
+}
 
 test("log failures are displayed and can be retried", async () => {
   let fail = true;
@@ -322,6 +355,40 @@ test("status headline is formatted while recent job logs remain unchanged", () =
   assert.equal(controls.get("preparation-log").textContent, raw);
   assert.match(controls.get("preparation-log-updated").textContent, /Checks every 10 seconds/);
 });
+
+for (const status of ["running", "succeeded", "failed"]) {
+  test(`receipt permission failure restores Azure evaluation status ${status} on reload`, async () => {
+    const calls = [];
+    const stale = {
+      run_id: "prod-receipt-failed", run_type: "evaluation", status: "failed",
+      current_stage: "evaluation",
+      evaluation: {jobs: {slm_evaluation: {job_name: "existing-azure-evaluation", status: "Queued"}}},
+      stages: {evaluation: {status: "failed", error: "Permission denied"}},
+    };
+    const latest = {
+      ...stale, status: status === "succeeded" ? "ready" : status,
+      evaluation: {jobs: {slm_evaluation: {
+        job_name: "existing-azure-evaluation",
+        status: status === "succeeded" ? "Completed" : status === "failed" ? "Failed" : "Running",
+      }}},
+      stages: {evaluation: {status, error: status === "failed" ? "Azure job failed" : null}},
+    };
+    const {context, timers, controls} = uiContext(async path => {
+      calls.push(path);
+      if (path.endsWith("/log")) return {run_id: stale.run_id, current_status: status};
+      return path === "/api/runs" ? {runs: [stale]} : latest;
+    });
+    vm.runInContext(`
+      config = {stage_order: ["evaluation"]};
+      renderSelected = () => { renderTaskControls(); schedulePoll(); };
+    `, context);
+    await vm.runInContext("refresh()", context);
+    assert.deepEqual(calls, ["/api/runs", "/api/runs/prod-receipt-failed", "/api/runs/prod-receipt-failed/log"]);
+    assert.equal(vm.runInContext("selected.status", context), latest.status);
+    assert.equal(timers.length, status === "running" ? 1 : 0);
+    assert.equal(controls.get("evaluation-form").hidden, status === "running");
+  });
+}
 
 test("sample table shows every generated field without truncating CoT or JSON context", () => {
   const { context, controls } = uiContext();

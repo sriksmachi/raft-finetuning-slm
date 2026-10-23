@@ -130,6 +130,13 @@ function trainingNeedsRefresh(run) {
     && !["Completed", "Failed", "Canceled", "Cancelled"].includes(run.training.job_status);
 }
 
+function evaluationNeedsRefresh(run) {
+  const receipt = run?.evaluation?.jobs?.slm_evaluation;
+  return run?.run_type === "evaluation" && ["running", "failed"].includes(run.status)
+    && Boolean(receipt?.job_name)
+    && !["Completed", "Failed", "Canceled", "Cancelled"].includes(receipt.status);
+}
+
 function renderTaskControls() {
   const active = Boolean(activeRun());
   for (const id of ["create-form", "training-form", "evaluation-form", "release-plan-form"]) {
@@ -849,7 +856,7 @@ async function refresh() {
       selected = runs[0];
       tab = selected.current_stage;
     }
-    if (trainingNeedsRefresh(selected)) {
+    if (trainingNeedsRefresh(selected) || evaluationNeedsRefresh(selected)) {
       const latest = await api(`/api/runs/${encodeURIComponent(selected.run_id)}`);
       if (version !== selectionVersion) return;
       selected = latest;

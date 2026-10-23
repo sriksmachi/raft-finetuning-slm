@@ -45,7 +45,6 @@ Examples:
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import sys
@@ -63,6 +62,7 @@ from lib.azureml_ops import (
     submit_inference_evaluation_job,
 )
 from lib.config import AzureMLConfig
+from lib.job_receipts import write_receipt
 from lib.run_registry import RUNS_DIR, latest_run, record_run
 
 log = logging.getLogger("azureml_slm_vs_gpt_evaluation")
@@ -260,17 +260,14 @@ def write_evaluation_receipt(job, args, baseline_version, status):
     if not args.receipt_path:
         return
     path = args.receipt_path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".pending")
-    temporary.write_text(json.dumps({
+    write_receipt(path, {
         "job_name": job.name, "job_id": job.id, "job_uri": getattr(job, "studio_url", None),
         "status": status, "mode": args.mode, "training_job_name": args.finetuning_job_name,
         "dataset_id": f"azureml:{args.test_data_asset_name}:{args.test_data_asset_version}",
         "baseline_id": f"{args.llm_baseline_data_asset_name}:{baseline_version}",
         "judge_deployment": args.judge_deployment or args.gpt_deployment,
         "updated_at": datetime.now(timezone.utc).isoformat(),
-    }, indent=2), encoding="utf-8")
-    os.replace(temporary, path)
+    })
 
 
 def main() -> int:
