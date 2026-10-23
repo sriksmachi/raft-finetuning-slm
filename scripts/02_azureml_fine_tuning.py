@@ -34,10 +34,8 @@ import logging
 import os
 import sys
 import time
-from concurrent.futures import Future
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import Thread
 
 from azure.identity import CredentialUnavailableError
 from dotenv import load_dotenv
@@ -48,6 +46,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from lib.azureml_ops import (
     create_training_environment,
     get_training_environment_version,
+    monitor_job,
     submit_finetuning_job,
 )
 from lib.config import AzureMLConfig
@@ -181,27 +180,14 @@ def write_job_receipt(job, args: argparse.Namespace, status: str) -> None:
 
 
 def monitor_training_job(ml_client, job_name: str, args: argparse.Namespace):
-    streamed: Future[None] = Future()
-
-    def stream_logs():
-        try:
-            ml_client.jobs.stream(job_name)
-        except Exception as exc:  # noqa: BLE001 - Re-raised by streamed.result() on the main thread.
-            streamed.set_exception(exc)
-        else:
-            streamed.set_result(None)
-
-    Thread(target=stream_logs, name="azure-training-logs", daemon=True).start()
-    while True:
-        if streamed.done():
-            streamed.result()
-        job = get_job_after_stream(ml_client, job_name)
+    def updated(job):
         write_job_receipt(job, args, job.status)
         log.info("Azure ML fine-tuning job %s: %s", job_name, job.status)
-        if job.status in {"Completed", "Failed", "Canceled"}:
-            streamed.result()
-            return job
-        time.sleep(10)
+
+    return monitor_job(
+        ml_client, job_name, updated,
+        get_job=lambda: get_job_after_stream(ml_client, job_name),
+    )
 
 
 def register_environment(ml_client, args: argparse.Namespace):
@@ -286,6 +272,16 @@ def submit_training(ml_client, args: argparse.Namespace, environment_id: str):
         base_model_source=args.base_model_source,
         compute_name=args.compute_name,
         data_asset=f"{args.data_asset_name}:{args.data_asset_version}",
+        training_parameters={
+            **{key: getattr(args, key) for key in (
+                "epochs", "batch_size", "gradient_accumulation", "learning_rate",
+                "max_seq_length", "lora_rank", "lora_adapter_name", "chat_template", "seed", "load_in_4bit",
+            )},
+            "lora_adapter_name": lora_adapter_name,
+            "chat_template": chat_template,
+        },
+        base_model_registry=args.base_model_registry,
+        base_model_label=args.base_model_label,
         status="submitted",
     )
     log.info("Recorded run %s", run_path)

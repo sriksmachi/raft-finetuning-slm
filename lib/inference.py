@@ -14,8 +14,8 @@ import unsloth  # noqa: F401 - must preload before importing Transformers
 from azure.identity import ManagedIdentityCredential, get_bearer_token_provider
 from azure.storage.blob import BlobServiceClient
 from evaluation import RAG_METRICS, context_text, evaluate_rag_predictions
-from lora_artifacts import load_lora_adapter, resolve_lora_adapter
 from llm_baseline import apply_llm_baseline, write_llm_baseline
+from lora_artifacts import load_lora_adapter, resolve_base_model, resolve_lora_adapter
 from prompts import question_context_messages
 from release import write_evaluation_manifest
 from tqdm import tqdm
@@ -251,33 +251,6 @@ def get_az_client(client_id) -> ManagedIdentityCredential:
     client = ManagedIdentityCredential(client_id=client_id)
     return client
 
-def resolve_base_model(base_model: str) -> str:
-    """
-    Return a loadable model reference.
-    If a local AML/MLflow model directory is supplied, locate the
-    nested HuggingFace checkpoint.
-    """
-    path = Path(base_model)
-    if not path.is_dir():
-        return base_model
-    candidates = [
-        config.parent
-        for config in path.rglob("config.json")
-        if (config.parent / "tokenizer_config.json").exists()
-        and (
-            any(config.parent.glob("*.safetensors"))
-            or any(config.parent.glob("pytorch_model*.bin"))
-        )
-    ]
-    if len(candidates) != 1:
-        raise RuntimeError(
-            f"Expected exactly one Transformers checkpoint under {path}. "
-            f"Found {len(candidates)} candidates: {candidates}"
-        )
-    resolved = candidates[0]
-    log.info("Resolved base model checkpoint: %s", resolved)
-    return str(resolved)
-
 
 def download_model(model_name: str,
                    fine_tuned_model_path: str | None = None,
@@ -433,6 +406,8 @@ def call_gpt_with_retry(
                 "text": choice.message.content or "",
                 "finish_reason": choice.finish_reason,
                 "completion_tokens": usage.completion_tokens if usage else None,
+                "prompt_tokens": getattr(usage, "prompt_tokens", None) if usage else None,
+                "model_id": getattr(response, "model", None),
             }
         except Exception as exc:  # noqa: BLE001 - SDK exposes multiple transient exception types
             last_error = exc
@@ -512,9 +487,9 @@ def run_gpt_inference(
                 outputs_reaching_limit += 1
 
             rows[sample_index]["gpt_slm_response"] = response_text
-            rows[sample_index]["gpt_generated_token_count"] = (
-                result["completion_tokens"] or 0
-            )
+            rows[sample_index]["gpt_generated_token_count"] = result["completion_tokens"]
+            rows[sample_index]["gpt_prompt_token_count"] = result.get("prompt_tokens")
+            rows[sample_index]["gpt_model_id"] = result.get("model_id")
             rows[sample_index]["gpt_output_reached_limit"] = reached_limit
             rows[sample_index]["gpt_slm_latency_ms"] = latency_ms
             try:
@@ -693,6 +668,7 @@ def generate_predictions(
                     truncation=False,
                 )
                 prompt_token_count = len(encoded["input_ids"])
+                rows[sample_index][f"{mode.replace('-', '_')}_prompt_token_count"] = prompt_token_count
                 rows[sample_index]["prompt_token_count"] = max(
                     rows[sample_index]["prompt_token_count"],
                     prompt_token_count,
@@ -1242,6 +1218,8 @@ def main(args: argparse.Namespace):
 
         from deepeval_metrics import build_deepeval_judge
 
+        judge_usage = {"input": 0, "output": 0, "complete": True, "model_ids": set(), "identity_complete": True}
+
         def completion(prompt):
             result = call_gpt_with_retry(
                 judge_client,
@@ -1254,11 +1232,32 @@ def main(args: argparse.Namespace):
                 max_retries=args.gpt_max_retries,
                 response_format={"type": "json_object"},
             )
+            for direction, key in (("input", "prompt_tokens"), ("output", "completion_tokens")):
+                if result.get(key) is None:
+                    judge_usage["complete"] = False
+                else:
+                    judge_usage[direction] += result[key]
+            if isinstance(result.get("model_id"), str) and result["model_id"].strip():
+                judge_usage["model_ids"].add(result["model_id"])
+            else:
+                judge_usage["identity_complete"] = False
             return result["text"]
+
+        raw_judge = build_deepeval_judge(completion, judge_deployment)
+
+        def tracked_judge(**kwargs):
+            judge_usage.update(input=0, output=0, complete=True, model_ids=set(), identity_complete=True)
+            result = raw_judge(**kwargs)
+            result["_usage"] = {
+                direction: judge_usage[direction] if judge_usage["complete"] else None
+                for direction in ("input", "output")
+            }
+            result["_usage"]["model_id"] = next(iter(judge_usage["model_ids"])) if judge_usage["identity_complete"] and len(judge_usage["model_ids"]) == 1 else None
+            return result
 
         predictions = pd.DataFrame(evaluate_rag_predictions(
             predictions.to_dict("records"),
-            build_deepeval_judge(completion, judge_deployment),
+            tracked_judge,
             model_prefixes=modes_to_judge,
         ))
         predictions["rag_judge_deployment"] = judge_deployment

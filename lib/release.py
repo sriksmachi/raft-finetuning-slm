@@ -11,7 +11,6 @@ import re
 import statistics
 import tempfile
 from collections.abc import Iterable, Mapping
-from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,6 +24,8 @@ else:
     from evaluation import RAG_METRICS, context_text
 
     from data import read_jsonl
+
+MODELS = ("fine_tuned", "oob", "gpt")
 
 
 def utc_now() -> str:
@@ -49,59 +50,6 @@ def write_json(value: Mapping[str, Any], path: str | Path) -> Path:
     return target
 
 
-@dataclass(frozen=True)
-class ReleasePolicy:
-    min_faithfulness: float = 0.7
-    min_relevancy: float = 0.7
-    min_correctness: float = 0.7
-    correctness_tolerance: float = 0.0
-    max_mean_latency_ms: float = 20_000
-    max_p95_latency_ms: float = 40_000
-    min_examples: int = 30
-    min_token_f1: float | None = None
-
-    def __post_init__(self):
-        for name in ("min_faithfulness", "min_relevancy", "min_correctness", "correctness_tolerance"):
-            value = getattr(self, name)
-            if isinstance(value, bool) or not math.isfinite(value) or not 0 <= value <= 1:
-                raise ValueError(f"{name} must be a finite number between 0 and 1")
-        for name in ("max_mean_latency_ms", "max_p95_latency_ms"):
-            if not math.isfinite(getattr(self, name)) or getattr(self, name) <= 0:
-                raise ValueError(f"{name} must be finite and positive")
-        if isinstance(self.min_examples, bool) or not isinstance(self.min_examples, int) or self.min_examples < 1:
-            raise ValueError("min_examples must be a positive integer")
-        if self.min_token_f1 is not None and (
-            not math.isfinite(self.min_token_f1) or not 0 <= self.min_token_f1 <= 1
-        ):
-            raise ValueError("min_token_f1 must be between 0 and 1")
-
-
-@dataclass(frozen=True)
-class DeploymentPolicy:
-    min_token_f1: float = 0.7
-    max_mean_latency_ms: float = 20_000
-    max_p95_latency_ms: float = 40_000
-    min_examples: int = 30
-
-    def __post_init__(self):
-        if (
-            isinstance(self.min_token_f1, bool)
-            or not math.isfinite(self.min_token_f1)
-            or not 0 <= self.min_token_f1 <= 1
-        ):
-            raise ValueError("min_token_f1 must be a finite number between 0 and 1")
-        for name in ("max_mean_latency_ms", "max_p95_latency_ms"):
-            value = getattr(self, name)
-            if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
-                raise ValueError(f"{name} must be finite and positive")
-        if (
-            isinstance(self.min_examples, bool)
-            or not isinstance(self.min_examples, int)
-            or self.min_examples < 1
-        ):
-            raise ValueError("min_examples must be a positive integer")
-
-
 def _number(value: Any, field: str, *, score: bool = False) -> float:
     if isinstance(value, bool):
         raise TypeError(f"{field} must be numeric")
@@ -112,14 +60,6 @@ def _number(value: Any, field: str, *, score: bool = False) -> float:
     if not math.isfinite(parsed) or (score and not 0 <= parsed <= 1):
         raise ValueError(f"{field} is not a finite {'0-1 score' if score else 'number'}")
     return parsed
-
-
-def _p95(values: list[float]) -> float:
-    ordered = sorted(values)
-    position = (len(ordered) - 1) * 0.95
-    lower = math.floor(position)
-    upper = math.ceil(position)
-    return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
 
 
 def validate_test_rows(
@@ -177,123 +117,6 @@ def validate_test_rows(
     return observed
 
 
-def assess_rows(
-    rows: list[dict[str, Any]], policy: ReleasePolicy, *, compare_gpt: bool,
-) -> dict[str, Any]:
-    if not rows:
-        raise ValueError("Release gate requires evaluated rows")
-    reasons = []
-    if len(rows) < policy.min_examples:
-        reasons.append(f"Only {len(rows)} examples; at least {policy.min_examples} required")
-    means = {
-        metric: statistics.mean(_number(row[f"fine_tuned_{metric}_score"], metric, score=True)
-                                for row in rows)
-        for metric in RAG_METRICS
-    }
-    slices = {}
-    for sample_type in sorted({str(row.get("type", "")) for row in rows}):
-        group = [row for row in rows if str(row.get("type", "")) == sample_type]
-        slices[sample_type or "unspecified"] = {
-            "count": len(group),
-            **{metric: statistics.mean(row[f"fine_tuned_{metric}_score"] for row in group)
-               for metric in RAG_METRICS},
-        }
-    for metric in RAG_METRICS:
-        threshold = getattr(policy, f"min_{metric}")
-        if means[metric] < threshold:
-            reasons.append(f"{metric}={means[metric]:.4f} is below {threshold:.4f}")
-        for label, values in slices.items():
-            if values[metric] < threshold:
-                reasons.append(f"{label} slice {metric}={values[metric]:.4f} is below {threshold:.4f}")
-    if compare_gpt:
-        baseline = statistics.mean(row["gpt_correctness_score"] for row in rows)
-        if means["correctness"] + policy.correctness_tolerance < baseline:
-            reasons.append("Fine-tuned correctness falls below the GPT baseline")
-    else:
-        baseline = None
-    latencies = [_number(row["fine_tuned_slm_latency_ms"], "latency") for row in rows]
-    mean_latency, p95_latency = statistics.mean(latencies), _p95(latencies)
-    if mean_latency > policy.max_mean_latency_ms:
-        reasons.append("Mean latency exceeds the approved budget")
-    if p95_latency > policy.max_p95_latency_ms:
-        reasons.append("p95 latency exceeds the approved budget")
-    if policy.min_token_f1 is not None:
-        token_f1_mean = statistics.mean(_number(row["answer_token_f1"], "answer_token_f1", score=True)
-                                       for row in rows)
-        if token_f1_mean < policy.min_token_f1:
-            reasons.append("Answer token-F1 falls below the approved budget")
-    return {
-        "passed": not reasons, "reasons": reasons, "row_count": len(rows), "means": means,
-        "slices": slices, "gpt_correctness": baseline, "mean_latency_ms": mean_latency,
-        "p95_latency_ms": p95_latency, "policy": asdict(policy),
-    }
-
-
-def assess_deployment_rows(
-    rows: Iterable[Mapping[str, Any]],
-    test_records: Iterable[Mapping[str, Any]],
-    policy: DeploymentPolicy,
-) -> dict[str, Any]:
-    """Assess live endpoint evidence against the complete sealed test set."""
-    source = list(test_records)
-    expected_ids = [str(record["id"]) for record in source]
-    if not source or len(set(expected_ids)) != len(expected_ids):
-        raise ValueError("Sealed test records must have non-empty, unique IDs")
-
-    observed = [dict(row) for row in rows]
-    observed_ids = [str(row.get("id", "")) for row in observed]
-    if len(set(observed_ids)) != len(observed_ids) or set(observed_ids) != set(expected_ids):
-        raise ValueError(
-            "Deployment evaluation must cover exactly the complete sealed test set"
-        )
-    expected = {str(record["id"]): record for record in source}
-    for row in observed:
-        source_row = expected[str(row["id"])]
-        if row.get("question") != source_row["question"]:
-            raise ValueError(f"Record {row['id']} has a mismatched question")
-        if row.get("reference") != source_row["cot_answer"]:
-            raise ValueError(f"Record {row['id']} has a mismatched reference")
-
-    token_f1_scores = [
-        _number(row.get("answer_token_f1"), "answer_token_f1", score=True)
-        for row in observed
-    ]
-    latencies = []
-    for row in observed:
-        if not str(row.get("prediction", "")).strip():
-            raise ValueError(f"Record {row.get('id')} has no endpoint prediction")
-        latency = _number(row.get("latency_ms"), "latency_ms")
-        if latency <= 0:
-            raise ValueError("Endpoint latency must be positive")
-        latencies.append(latency)
-
-    mean_token_f1 = statistics.mean(token_f1_scores)
-    mean_latency = statistics.mean(latencies)
-    p95_latency = _p95(latencies)
-    reasons = []
-    if len(observed) < policy.min_examples:
-        reasons.append(
-            f"Only {len(observed)} examples; at least {policy.min_examples} required"
-        )
-    if mean_token_f1 < policy.min_token_f1:
-        reasons.append(
-            f"answer_token_f1={mean_token_f1:.4f} is below {policy.min_token_f1:.4f}"
-        )
-    if mean_latency > policy.max_mean_latency_ms:
-        reasons.append("Mean latency exceeds the approved budget")
-    if p95_latency > policy.max_p95_latency_ms:
-        reasons.append("p95 latency exceeds the approved budget")
-    return {
-        "passed": not reasons,
-        "reasons": reasons,
-        "row_count": len(observed),
-        "mean_token_f1": mean_token_f1,
-        "mean_latency_ms": mean_latency,
-        "p95_latency_ms": p95_latency,
-        "policy": asdict(policy),
-    }
-
-
 def write_evaluation_manifest(
     predictions_csv: str | Path, test_path: str | Path,
     training_job_name: str | None, evaluation_run_id: str,
@@ -308,10 +131,10 @@ def write_evaluation_manifest(
     }, predictions.parent / "evaluation_evidence.json")
 
 
-def load_inference_evidence(
+def read_candidate_evidence(
     evidence_dir: str | Path, test_path: str | Path, training_job_name: str,
-    policy: ReleasePolicy,
-) -> dict[str, Any]:
+    evaluation_job_name: str | None = None,
+) -> tuple[dict, list[dict], dict]:
     directory = Path(evidence_dir)
     manifests = list(directory.rglob("evaluation_evidence.json"))
     if len(manifests) != 1:
@@ -322,12 +145,16 @@ def load_inference_evidence(
             or manifest.get("framework") != "deepeval"
             or manifest.get("training_job_name") != training_job_name):
         raise ValueError("Evaluation evidence is not bound to the requested training candidate")
+    if evaluation_job_name is not None and manifest.get("evaluation_run_id") != evaluation_job_name:
+        raise ValueError("Evidence belongs to a different evaluation job")
     if manifest.get("test_sha256") != file_sha256(test_path):
         raise ValueError("Evaluation evidence uses a different sealed test file")
     filename = manifest.get("predictions_file")
     if not isinstance(filename, str) or Path(filename).name != filename:
         raise ValueError("Evidence predictions_file must be a single filename")
     predictions = manifest_path.parent / filename
+    if manifest_path.is_symlink() or predictions.is_symlink():
+        raise ValueError("Symlink release evidence is not supported")
     if manifest.get("predictions_sha256") != file_sha256(predictions):
         raise ValueError("Evaluation CSV has changed since its manifest was produced")
     with predictions.open(encoding="utf-8", newline="") as stream:
@@ -337,8 +164,7 @@ def load_inference_evidence(
         "test_sha256": manifest["test_sha256"],
         "predictions_sha256": manifest["predictions_sha256"],
         "predictions_file": str(predictions),
-        "gate": assess_rows(rows, policy, compare_gpt=True),
-    }
+    }, rows, manifest
 
 
 def approval_record(approved: bool, actor: str | None, reason: str | None, evidence_sha: str) -> dict:
@@ -406,3 +232,98 @@ def validate_cloud_evaluation(ml_client, training_job_name: str, evaluation_job_
     if input_path(training, "base_model") != input_path(evaluation, "base_model"):
         raise ValueError("Inference used different base weights from training")
     return training, evaluation
+
+
+def policy_description() -> dict:
+    return {
+        "version": "paired-quality-v2",
+        "metrics": list(RAG_METRICS),
+        "minimum_examples": 30,
+        "minimum_absolute_uplift": 0.02,
+        "perfect_baseline_exception": {
+            "baseline_score": 1.0,
+            "candidate_score": 1.0,
+            "waived_checks": ["uplift", "positive_confidence_interval"],
+        },
+        "maximum_relative_gpt_shortfall_exclusive": 0.05,
+        "confidence": 0.95,
+        "bootstrap_replicates": 5000,
+        "bootstrap_seed": 42,
+        "method": "Paired nonparametric percentile bootstrap, resampling complete sealed-test rows.",
+        "excluded": ["latency", "token_usage", "token_cost"],
+        "editable": False,
+    }
+
+
+def assess_candidate_rows(rows: list[dict]) -> dict:
+    import numpy as np
+
+    policy = policy_description()
+    if not rows:
+        raise ValueError("Readiness requires per-example sealed-test scores.")
+    values = {}
+    for model in MODELS:
+        columns = []
+        for metric in RAG_METRICS:
+            scores = []
+            for row in rows:
+                raw = row.get(f"{model}_{metric}_score")
+                if raw is None or isinstance(raw, bool):
+                    raise ValueError(f"Missing {model} {metric} per-example score.")
+                score = float(raw)
+                if not math.isfinite(score) or not 0 <= score <= 1:
+                    raise ValueError(f"Invalid {model} {metric} score.")
+                scores.append(score)
+            columns.append(scores)
+        values[model] = np.array(columns, dtype=float).T
+    differences = values["fine_tuned"] - values["oob"]
+    rng = np.random.default_rng(policy["bootstrap_seed"])
+    remaining = policy["bootstrap_replicates"]
+    replicates = []
+    # Bound temporary arrays for large sealed sets without changing the sampling method.
+    batch_size = max(1, min(256, 500_000 // len(rows)))
+    while remaining:
+        count = min(batch_size, remaining)
+        indexes = rng.integers(0, len(rows), size=(count, len(rows)))
+        replicates.append(differences[indexes].mean(axis=1))
+        remaining -= count
+    intervals = np.quantile(np.concatenate(replicates), [0.025, 0.975], axis=0)
+    reasons = []
+    if len(rows) < policy["minimum_examples"]:
+        reasons.append(f"At least 30 sealed-test examples required; observed {len(rows)}.")
+    metrics = []
+    for index, metric in enumerate(RAG_METRICS):
+        means = {model: statistics.mean(values[model][:, index].tolist()) for model in MODELS}
+        uplift = means["fine_tuned"] - means["oob"]
+        gap = max(0.0, (means["gpt"] - means["fine_tuned"]) / means["gpt"]) if means["gpt"] else 0.0
+        ceiling = policy["perfect_baseline_exception"]
+        baseline_at_ceiling = bool(np.all(values["oob"][:, index] == ceiling["baseline_score"]))
+        perfect_tie = baseline_at_ceiling and bool(
+            np.all(values["fine_tuned"][:, index] == ceiling["candidate_score"])
+        )
+        checks = {
+            "uplift": perfect_tie if baseline_at_ceiling else (
+                uplift >= 0.02 or math.isclose(uplift, 0.02, rel_tol=0, abs_tol=1e-12)
+            ),
+            "gpt_gap": gap < 0.05 and not math.isclose(gap, 0.05, rel_tol=0, abs_tol=1e-12),
+            "positive_confidence_interval": perfect_tie if baseline_at_ceiling else float(intervals[0, index]) > 0,
+        }
+        failed = [name for name, passed in checks.items() if not passed]
+        if failed:
+            reasons.append(
+                f"{metric}: original SLM is 100%; fine-tuned scores must remain exactly 100% on every sealed-test example."
+                if baseline_at_ceiling and not perfect_tie
+                else f"{metric}: failed {', '.join(failed)}."
+            )
+        metrics.append({
+            "metric": metric, **means, "absolute_uplift": uplift,
+            "relative_gpt_shortfall": gap,
+            "uplift_ci95": [float(intervals[0, index]), float(intervals[1, index])],
+            "baseline_at_ceiling": baseline_at_ceiling,
+            "ceiling_exception_applied": perfect_tie,
+            "checks": checks, "passed": not failed and len(rows) >= 30,
+        })
+    return {
+        "passed": not reasons, "status": "ready" if not reasons else "blocked",
+        "sample_count": len(rows), "policy": policy, "metrics": metrics, "reasons": reasons,
+    }

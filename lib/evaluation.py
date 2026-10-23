@@ -4,35 +4,13 @@ from __future__ import annotations
 
 import logging
 import math
-import re
-from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from numbers import Real
 from typing import Any
 
-_ANSWER_PATTERN = re.compile(r"<ANSWER>\s*:?\s*(.*?)\s*</ANSWER>", re.IGNORECASE | re.DOTALL)
-_TOKEN_PATTERN = re.compile(r"\b\w+\b", re.UNICODE)
 log = logging.getLogger(__name__)
 RAG_METRICS = ("faithfulness", "relevancy", "correctness")
 RAG_MODEL_PREFIXES = ("oob", "fine_tuned", "gpt")
-
-
-def extract_answer(text: str) -> str:
-    match = _ANSWER_PATTERN.search(text or "")
-    return (match.group(1) if match else text or "").strip()
-
-
-def token_f1(prediction: str, reference: str) -> float:
-    predicted = _TOKEN_PATTERN.findall(extract_answer(prediction).lower())
-    expected = _TOKEN_PATTERN.findall(extract_answer(reference).lower())
-    if not predicted or not expected:
-        return float(predicted == expected)
-    overlap = sum((Counter(predicted) & Counter(expected)).values())
-    if not overlap:
-        return 0.0
-    precision = overlap / len(predicted)
-    recall = overlap / len(expected)
-    return 2 * precision * recall / (precision + recall)
 
 
 def context_text(value: Any) -> str:
@@ -90,6 +68,10 @@ def evaluate_rag_predictions(
                 for metric in RAG_METRICS:
                     row[f"{prefix}_{metric}_reason"] = error
                 continue
+            if "_usage" in result:
+                for direction in ("input", "output"):
+                    row[f"{prefix}_judge_{direction}_token_count"] = result["_usage"][direction]
+                row[f"{prefix}_judge_model_id"] = result["_usage"].get("model_id")
             errors = []
             for metric in RAG_METRICS:
                 try:

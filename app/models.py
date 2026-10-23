@@ -1,4 +1,4 @@
-"""Validated action inputs for isolated demo and production APIs."""
+"""Validated inputs for production operations."""
 
 from datetime import datetime, timezone
 from typing import Literal
@@ -11,17 +11,10 @@ class Action(BaseModel):
     confirmed: bool = Field(default=False, strict=True)
 
 
-class Preparation(Action):
-    source_folder: str = Field(default="data/", min_length=1, max_length=500)
-    recipe: Literal["context-grounded", "context-assisted"]
-    scenario: Literal["passing", "blocked", "failure"] = "passing"
-    num_samples: int = Field(default=240, ge=3, le=100000, strict=True)
-
-
 class ProductionPreparation(Action):
     source_folder: str = Field(default="data/", min_length=1, max_length=500)
     recipe: Literal["context-grounded"] = "context-grounded"
-    num_samples: int = Field(default=240, ge=3, le=100000, strict=True)
+    num_samples: int = Field(default=300, ge=3, le=100000, strict=True)
     num_questions: int = Field(default=5, ge=1, le=100, strict=True)
     oracle_probability: float = Field(default=0.8, ge=0, le=1)
     data_asset_name: str = Field(default="slm-studio-data", pattern=r"^[a-zA-Z][a-zA-Z0-9_-]{0,99}$")
@@ -35,30 +28,6 @@ class ProductionPreparation(Action):
     def valid_asset_timestamp(cls, value: str) -> str:
         datetime.strptime(value.removeprefix("data-"), "%d%m%y%H%M%S").replace(tzinfo=timezone.utc)
         return value
-
-
-class Parameters(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    base_model: Literal[
-        "demo-phi-3-mini",
-        "demo-phi-4-mini",
-        "demo-llama-3.2-1b",
-        "demo-llama-3.2-3b",
-        "demo-qwen-2.5-1.5b",
-        "demo-qwen-2.5-3b",
-        "demo-ministral-3b",
-        "demo-mistral-7b-instruct",
-    ] = "demo-phi-3-mini"
-    max_seq_length: int = Field(default=2048, ge=128, le=8192)
-    batch_size: int = Field(default=2, ge=1, le=32)
-    gradient_accumulation: int = Field(default=8, ge=1, le=128)
-    learning_rate: float = Field(default=0.0002, gt=0, le=0.01)
-    epochs: int = Field(default=3, ge=1, le=20)
-    lora_rank: int = Field(default=16, ge=1, le=128)
-
-
-class Training(Parameters, Action):
-    pass
 
 
 class TrainerParameters(BaseModel):
@@ -92,13 +61,34 @@ class ProductionTraining(TrainerParameters, Action):
         return self
 
 
-class Registration(Action):
-    override: bool = False
-    confirmation: str = ""
-    reason: str = Field(default="", max_length=2000)
-    actor: str = Field(default="local-demo-user", min_length=1, max_length=100)
+class ProductionEvaluation(Action):
+    job_name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 
 
-class Deployment(Action):
-    actor: str = Field(default="local-demo-user", min_length=1, max_length=100)
-    traffic_percent: int = Field(default=10, ge=1, le=100)
+class ReleasePlan(Action):
+    evaluation_run_id: str = Field(pattern=r"^prod-[A-Za-z0-9][A-Za-z0-9_-]{0,79}$")
+    action: Literal["register", "register_and_deploy"] = "register"
+    model_name: str = Field(default="slm-studio-candidate", pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,99}$")
+    endpoint_name: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{2,31}$")
+    production_data_uri: str | None = Field(default=None, min_length=1, max_length=1000)
+    monitor_compute: str = Field(default="cpu-cluster", pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+
+    @model_validator(mode="after")
+    def deployment_prerequisites(self):
+        if self.action == "register_and_deploy" and not (self.endpoint_name and self.production_data_uri):
+            raise ValueError("Deployment needs a new endpoint name and governed normalized production request URI for drift monitoring.")
+        return self
+
+
+class ReleaseApproval(Action):
+    plan_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    actor: str = Field(min_length=1, max_length=100)
+    reason: str = Field(min_length=1, max_length=2000)
+    accept_gpu_cost: bool = Field(default=False, strict=True)
+
+    @field_validator("actor", "reason")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Approval actor and reason must not be blank.")
+        return value.strip()

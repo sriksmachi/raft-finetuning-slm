@@ -142,11 +142,18 @@ def _generate(item: dict) -> dict:
         add_generation_prompt=True,
     )
     encoded = tokenizer(prompt, return_tensors="pt").to(model.device)
+    output_tokens = item.get("max_new_tokens", 512)
+    if isinstance(output_tokens, bool) or not isinstance(output_tokens, int) or output_tokens <= 0:
+        raise ValueError("max_new_tokens must be a positive integer")
+    if os.getenv("SLM_MAX_INPUT_TOKENS") and encoded["input_ids"].shape[1] > int(os.environ["SLM_MAX_INPUT_TOKENS"]):
+        raise ValueError("Input exceeds the approved endpoint token budget; shorten the request")
+    if os.getenv("SLM_MAX_OUTPUT_TOKENS") and output_tokens > int(os.environ["SLM_MAX_OUTPUT_TOKENS"]):
+        raise ValueError("Requested output exceeds the approved endpoint token budget")
     started = time.perf_counter()
     with torch.inference_mode():
         output = model.generate(
             **encoded,
-            max_new_tokens=int(item.get("max_new_tokens", 512)),
+            max_new_tokens=output_tokens,
             do_sample=False,
             pad_token_id=tokenizer.eos_token_id,
         )

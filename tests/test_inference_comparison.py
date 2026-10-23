@@ -129,7 +129,8 @@ def test_gpt_call_uses_max_completion_tokens_for_reasoning_models():
                     finish_reason="stop",
                 )
             ],
-            usage=SimpleNamespace(completion_tokens=4),
+            usage=SimpleNamespace(prompt_tokens=12, completion_tokens=4),
+            model="gpt-5.2-2025-12-11",
         )
     )
     client = SimpleNamespace(
@@ -150,6 +151,9 @@ def test_gpt_call_uses_max_completion_tokens_for_reasoning_models():
     )
 
     assert result["text"] == "answer"
+    assert result["prompt_tokens"] == 12
+    assert result["completion_tokens"] == 4
+    assert result["model_id"] == "gpt-5.2-2025-12-11"
     assert completion.call_args.kwargs["max_completion_tokens"] == 128
     assert "max_tokens" not in completion.call_args.kwargs
 
@@ -270,6 +274,8 @@ def test_generation_runs_oob_adapter_and_gpt_on_identical_prompts():
     for column in ("oob_slm_response", "fine_tuned_slm_response", "gpt_slm_response"):
         assert predictions[column].str.len().gt(0).all()
     assert predictions["cot_answer"].tolist() == [record["cot_answer"] for record in records]
+    assert predictions["oob_prompt_token_count"].gt(0).all()
+    assert predictions["fine_tuned_prompt_token_count"].gt(0).all()
 
 
 def _run_main(tmp_path, monkeypatch, judge):

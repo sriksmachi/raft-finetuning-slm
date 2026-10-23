@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SLM Studio</title>
-  <link rel="stylesheet" href="/static/styles.css?v=full-cot-fields">
-  <script type="module" src="/static/app.js?v=full-cot-fields"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=candidate-release">
+  <script type="module" src="/static/app.js?v=candidate-release"></script>
 </head>
 <body>
   <header class="topbar">
@@ -13,24 +13,16 @@
       <a class="brand" href="/">SLM<span>Studio</span></a>
       <p class="tagline">Cut token costs with task-aligned open models—fine-tune, compare, and deploy in minutes.</p>
     </div>
-    <div class="mode-control">
-      <label for="mode">Mode</label>
-      <select id="mode" aria-describedby="mode-note">
-        <option value="demo">Demo</option>
-        <option value="production">Production</option>
-      </select>
-    </div>
   </header>
-  <div class="notice" id="mode-note">
-    Demo only. No Azure services are called.
+  <div class="notice">
+    Real Azure preparation, training, evaluation and approved release. GPU and GPT costs apply.
   </div>
   <div class="layout">
     <aside class="sidebar">
       <p class="eyebrow">YOUR WORKSPACE</p>
       <h1>Specialize.<br>Compare.<br>Decide.</h1>
-      <p class="muted">AI-guided dataset creation, model recommendations, and hyperparameter tuning—from source data to deployment decisions.</p>
+      <p class="muted">Prepare grounded datasets, configure fine-tuning, and compare models before an evidence-based release.</p>
       <button id="new-run" class="primary" type="button">+ New run</button>
-      <button id="configure-training" type="button" hidden>Configure fine-tuning</button>
       <div class="section-heading"><h2>Recent runs</h2><button id="refresh" class="quiet" type="button">Refresh</button></div>
       <label class="sr-only" for="run-select">Select a run</label>
       <select id="run-select"><option value="">Loading runs...</option></select>
@@ -63,6 +55,10 @@
           <pre id="preparation-log"></pre>
         </details>
       </section>
+      <div id="task-controls" hidden>
+        <p class="hint">Cancel stops local work and monitoring. Azure jobs or allocated resources may remain billable; check Azure ML before retrying.</p>
+        <button id="cancel-task" type="button">Cancel task</button>
+      </div>
 
       <section id="panel-data_preparation" class="panel">
         <p class="eyebrow">STAGE 01</p><h2>Prepare training data</h2>
@@ -71,30 +67,27 @@
         <form id="create-form">
           <div class="form-grid">
             <label>Data folder<input name="source_folder" value="data/" maxlength="240" required></label>
-            <label>Generation recipe<select name="recipe" aria-describedby="recipe-explanation"><option value="context-grounded">Context-grounded (RAFT)</option><option value="context-assisted">Context-assisted (RAG)</option></select></label>
-            <label>Number of samples (total)<input name="num_samples" type="number" value="240" min="3" max="100000" step="1" required></label>
+            <label>Generation recipe<select name="recipe" aria-describedby="recipe-explanation"><option value="context-grounded">Context-grounded (RAFT)</option><option value="context-assisted" disabled>Context-assisted (RAG) — training unavailable</option></select></label>
+            <label>Number of samples (total)<input name="num_samples" type="number" value="300" min="3" max="100000" step="1" aria-describedby="sample-count-note" required></label>
           </div>
+          <p id="sample-count-note" class="hint">Default: 300 total samples, targeting about 30 test examples with the source-grouped 80/10/10 split. Release requires at least 30 actual sealed-test examples. Group sizes can change the split counts; review the data card and generate more samples if needed. Smaller datasets remain available for experiments.</p>
           <p id="recipe-explanation" class="hint">RAFT builds training examples with relevant and distractor documents. RAG retrieves supporting documents when answering; it is not a fine-tuning method by itself.</p>
-          <div id="production-options" class="form-grid" hidden>
+          <div id="production-options" class="form-grid">
             <label>Questions per generation call<input name="num_questions" type="number" value="5" min="1" max="100" step="1" required></label>
             <label>Oracle probability<input name="oracle_probability" type="number" value="0.8" min="0" max="1" step="any" required></label>
             <label>Azure ML data asset name<input name="data_asset_name" value="slm-studio-data" required></label>
           </div>
-          <details id="demo-options">
-            <summary>Example workflow options</summary>
-            <label>Outcome<select name="scenario"><option value="passing">Passing candidate</option><option value="blocked">Blocked gate</option><option value="failure">Training failure</option></select></label>
-          </details>
-          <label class="check"><input name="confirmed" type="checkbox" required><span id="confirmation-label">I confirm the data source and generation recipe.</span></label>
+          <label class="check"><input name="confirmed" type="checkbox" required><span id="confirmation-label">I confirm billable GPT generation, PDF extraction, and Azure ML data publication.</span></label>
           <button class="primary" type="submit">Prepare data</button>
         </form>
       </section>
 
       <section id="panel-training" class="panel" hidden>
         <p class="eyebrow">STAGE 02</p><h2>Configure fine-tuning</h2>
-        <p class="muted">Review the suggested parameters and adjust them for your dataset before starting training.</p>
+        <p class="muted">Review the default parameters and adjust them for your dataset before starting training.</p>
         <div id="training-summary"></div>
         <form id="training-form">
-          <div id="production-dataset-options" hidden>
+          <div id="production-dataset-options">
             <h3>Training dataset</h3>
             <div class="form-grid">
               <label>Dataset source<select name="dataset_source"><option value="runs">Published Studio dataset</option><option value="manual">Existing Azure dataset ID</option></select></label>
@@ -106,28 +99,25 @@
             <p id="dataset-selection-note" class="hint"></p>
           </div>
           <div class="form-grid">
-            <label id="demo-base-model-field">Base model<select name="base_model"></select></label>
-            <label id="production-base-model-field" hidden>Foundry base model<input name="production_base_model" value="Llama-3.2-3B-Instruct" list="production-models"><datalist id="production-models"></datalist></label>
+            <label id="production-base-model-field">Foundry base model<input name="production_base_model" value="Llama-3.2-3B-Instruct" list="production-models" required><datalist id="production-models"></datalist></label>
             <label>Maximum sequence length<input name="max_seq_length" type="number" value="2048" min="128" max="32768" step="1" required></label>
             <label>Batch size<input name="batch_size" type="number" value="2" min="1" max="64" step="1" required></label>
             <label>Gradient accumulation<input name="gradient_accumulation" type="number" value="16" min="1" max="256" step="1" required></label>
             <label>Learning rate<input name="learning_rate" type="number" value="0.00002" min="0.0000001" max="0.01" step="any" required></label>
-            <label>Epochs<input name="epochs" type="number" value="1" min="0.1" max="20" step="any" required></label>
+            <label>Epochs<input name="epochs" type="number" value="1" min="0" max="100" step="any" required></label>
             <label>LoRA rank<input name="lora_rank" type="number" value="8" min="1" max="256" step="1" required></label>
           </div>
-          <div id="production-trainer-options" hidden>
+          <div id="production-trainer-options">
             <h3>Additional trainer settings</h3>
             <div class="form-grid">
-              <label>Chat template<input name="chat_template" value="llama-3.2" maxlength="100"></label>
-              <label>LoRA adapter name<input name="lora_adapter_name" value="finetuned_adapter" maxlength="100"></label>
-              <label>Random seed<input name="seed" type="number" value="42" min="0" max="4294967295" step="1"></label>
+              <label>Chat template<input name="chat_template" value="llama-3.2" maxlength="100" required></label>
+              <label>LoRA adapter name<input name="lora_adapter_name" value="finetuned_adapter" maxlength="100" required></label>
+              <label>Random seed<input name="seed" type="number" value="42" min="0" max="4294967295" step="1" required></label>
             </div>
             <label class="check"><input name="load_in_4bit" type="checkbox">Load the base model in 4-bit precision</label>
             <p class="hint">Sequence length is a fallback: the trainer selects the chat-template token-length p95. Precision is hardware-selected (bf16/fp16). The current recipe fixes LoRA alpha to twice the rank, dropout to 0, rsLoRA on, warmup to 0.03, a linear scheduler, and paged AdamW 8-bit. Azure compute and environment settings remain on the backend.</p>
           </div>
-          <p id="suggestion-note" class="hint"></p>
-          <div class="actions"><button id="suggest" type="button">Suggest parameters</button></div>
-          <label class="check"><input name="confirmed" type="checkbox" required><span id="training-confirmation-label">I confirm these training parameters.</span></label>
+          <label class="check"><input name="confirmed" type="checkbox" required><span id="training-confirmation-label">I confirm the dataset, trainer settings, and billable Azure GPU training job.</span></label>
           <button id="train" class="primary" type="submit">Start training</button>
         </form>
         <dialog id="dataset-format-dialog" aria-labelledby="dataset-format-title">
@@ -141,6 +131,14 @@
       <section id="panel-evaluation" class="panel" hidden>
         <p class="eyebrow">STAGE 03</p><h2>Compare the candidate</h2>
         <p class="muted">Compare the fine-tuned SLM, original SLM, and GPT baseline on the same sealed test split.</p>
+        <div id="production-evaluation-options">
+          <label for="evaluation-job">Completed training job</label>
+          <select id="evaluation-job" aria-describedby="evaluation-job-note"></select>
+          <p id="evaluation-job-note" class="hint">Choose a saved training job before confirming evaluation. Missing historical parameters are shown as not recorded.</p>
+          <div id="evaluation-job-summary"></div>
+          <p class="hint">Uses the judge deployment configured on the backend. Reuses this job's recorded GPT baseline when available; otherwise creates one. GPU inference and judge calls are billable.</p>
+        </div>
+        <div id="evaluation-metrics" class="table-wrap"></div>
         <section id="evaluation-showcase" class="evaluation-showcase" aria-labelledby="evaluation-showcase-title">
           <div class="showcase-heading">
             <div>
@@ -185,39 +183,45 @@
         </section>
         <div id="evaluation-summary"></div>
         <form id="evaluation-form">
-          <label class="check"><input name="confirmed" type="checkbox" required>I confirm the candidate and evaluation test split.</label>
+          <label class="check"><input name="confirmed" type="checkbox" required><span id="evaluation-confirmation-label">I confirm the selected training job, sealed test split, and billable GPU inference and judge calls.</span></label>
           <button id="evaluate" class="primary" type="submit">Run evaluation</button>
         </form>
       </section>
 
       <section id="panel-decision" class="panel" hidden>
         <p class="eyebrow">STAGE 04</p><h2>Approve and release the candidate</h2>
-        <p class="muted">Verify the offline evidence, record approval, register the model, and create a zero-traffic candidate with its drift reference.</p>
+        <p class="muted">Review immutable quality policy and complete lineage. Register only, or review a GPU cost estimate before registration and deployment.</p>
+        <div id="production-release-options">
+          <label>Recent completed evaluation<select id="release-evaluation"></select></label>
+          <div id="release-readiness"></div>
+          <form id="release-plan-form">
+            <div class="form-grid">
+              <label>Action<select name="action"><option value="register">Register candidate only</option><option value="register_and_deploy">Register and deploy (GPU cost applies)</option></select></label>
+              <label>Registered model name<input name="model_name" value="slm-studio-candidate" required maxlength="100"></label>
+            </div>
+            <div id="release-deployment-options" hidden>
+              <div class="form-grid">
+                <label>New dedicated endpoint name<input name="endpoint_name" placeholder="slm-candidate" maxlength="32"></label>
+                <label>Monitoring CPU cluster<input name="monitor_compute" value="cpu-cluster"></label>
+              </div>
+              <label>Governed production request folder URI<input name="production_data_uri" placeholder="azureml://datastores/.../paths/production-requests"></label>
+              <p class="hint">A maintained JSONL request stream with instruction and question strings is required. Do not use training/test data or raw collector telemetry. Scoring collection and weekly request-feature PSI monitoring are enabled; monitoring compute/storage also incur costs.</p>
+            </div>
+            <label class="check"><input name="confirmed" type="checkbox" required>I confirm evidence verification and GPT-assisted sizing calls when deploying. Planning allocates no GPU.</label>
+            <button id="plan-release" type="submit" class="primary">Review release plan</button>
+          </form>
+          <form id="release-approval-form" hidden>
+            <div class="form-grid">
+              <label>Approver<input name="actor" value="local-user" required maxlength="100"></label>
+              <label>Approval reason<input name="reason" placeholder="Reviewed policy, lineage and planned resources" required maxlength="2000"></label>
+            </div>
+            <label id="gpu-cost-confirmation" class="check"><input name="accept_gpu_cost" type="checkbox">I accept the displayed hourly GPU estimate and ongoing allocation charges, plus monitoring and storage costs.</label>
+            <label class="check"><input name="confirmed" type="checkbox" required>I approve this exact release plan. Blocked gates cannot be overridden.</label>
+            <button id="approve-release" type="submit" class="primary">Approve release</button>
+          </form>
+        </div>
         <div id="decision-summary"></div>
-        <form id="register-form">
-          <label>Approver<input name="actor" value="local-user" maxlength="100" required></label>
-          <div id="override-fields" class="override-fields" hidden>
-            <label class="check"><input name="override" type="checkbox">Override this blocked gate</label>
-            <label>Type OVERRIDE to confirm<input name="confirmation" autocomplete="off" placeholder="OVERRIDE" maxlength="20"></label>
-            <label>Reason for override<textarea name="reason" rows="2" maxlength="1000" placeholder="Record why you chose to override the evidence."></textarea></label>
-          </div>
-          <label class="check"><input name="confirmed" type="checkbox" required>I approve registration and zero-traffic candidate deployment.</label>
-          <button id="register" class="primary" type="submit">Approve &amp; release candidate</button>
-        </form>
-      </section>
-
-      <section id="panel-deployment" class="panel" hidden>
-        <p class="eyebrow">STAGE 05</p><h2>Run the deployment gate</h2>
-        <p class="muted">Test the named zero-traffic candidate, configure drift monitoring, and route traffic only when token-F1 and latency evidence pass.</p>
         <div id="deployment-summary"></div>
-        <form id="deployment-form">
-          <div class="form-grid">
-            <label>Operator<input name="actor" value="local-user" maxlength="100" required></label>
-            <label>Candidate traffic<select name="traffic_percent"><option value="10">10% canary</option><option value="25">25% staged</option><option value="50">50% staged</option><option value="100">100% full traffic</option></select></label>
-          </div>
-          <label class="check"><input name="confirmed" type="checkbox" required>I confirm the deployment gate and selected traffic change.</label>
-          <button id="deploy" class="primary" type="submit">Run gate &amp; route traffic</button>
-        </form>
       </section>
 
       <nav class="wizard-actions" aria-label="Wizard navigation">

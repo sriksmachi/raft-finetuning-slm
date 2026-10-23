@@ -1,6 +1,6 @@
-/** Shared HTTP contract; production and demo runs use isolated endpoints. */
-export async function api(path, body, mode = "demo") {
-  if (mode === "production" && (path === "/api/config" || path === "/api/training" || path.startsWith("/api/runs"))) {
+/** HTTP contract for the production API. */
+export async function api(path, body) {
+  if (path.startsWith("/api/") && !path.startsWith("/api/production/")) {
     path = path.replace("/api/", "/api/production/");
   }
   const response = await fetch(path, {
@@ -13,6 +13,7 @@ export async function api(path, body, mode = "demo") {
     const detail = result.detail;
     const message = typeof detail === "string" ? detail :
       Array.isArray(detail) ? detail.map((issue) => `${issue.loc.join(".")}: ${issue.msg}`).join("; ") :
+      typeof detail?.message === "string" ? `${detail.message} ${(detail.readiness?.reasons ?? []).join(" ")}`.trim() :
       `API returned ${response.status}.`;
     throw new Error(message);
   }

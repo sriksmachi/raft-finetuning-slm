@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import math
 import os
+import tempfile
+import time
+from collections.abc import Callable, Iterable
+from concurrent.futures import Future
 from pathlib import Path
+from threading import Thread
+from typing import Any
+
+from lib.evaluation import context_text
+from lib.prompts import question_context_instruction
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 log = logging.getLogger(__name__)
@@ -540,14 +551,14 @@ def register_job_model(
     job_name: str,
     model_name: str,
     version: str,
-    validation_metric: float | None = None,
+    metadata_tags: dict[str, str] | None = None,
 ):
     from azure.ai.ml.constants import AssetTypes
     from azure.ai.ml.entities import Model
 
     tags = {"framework": "SLM Studio", "source_job": job_name, "stage": "candidate"}
-    if validation_metric is not None:
-        tags["validation_answer_token_f1"] = str(validation_metric)
+    if metadata_tags:
+        tags.update(metadata_tags)
     model = Model(
         name=model_name,
         version=version,
@@ -567,10 +578,11 @@ def deploy_managed_endpoint(
     environment: str,
     instance_type: str,
     instance_count: int = 1,
-    traffic_percent: int = 0,
     base_model: str | None = None,
     key_vault_name: str | None = None,
     hf_token_secret_name: str | None = None,
+    max_input_tokens: int = 2048,
+    max_output_tokens: int = 512,
 ):
     from azure.ai.ml.entities import (
         CodeConfiguration,
@@ -583,8 +595,6 @@ def deploy_managed_endpoint(
     )
     from azure.core.exceptions import ResourceNotFoundError
 
-    if traffic_percent != 0:
-        raise ValueError("Candidate deployment must have zero traffic; use the separate promotion stage")
     if bool(key_vault_name) != bool(hf_token_secret_name):
         raise ValueError("Provide both Key Vault name and Hugging Face secret name")
     try:
@@ -597,8 +607,8 @@ def deploy_managed_endpoint(
             tags={"framework": "SLM Studio", "data_collection": "enabled"},
         )
         endpoint = ml_client.online_endpoints.begin_create_or_update(endpoint).result()
-
-    previous_traffic = dict(endpoint.traffic or {})
+    else:
+        raise ValueError("Dedicated deployment requires a new endpoint; existing routing is never modified")
     try:
         ml_client.online_deployments.get(endpoint_name=endpoint_name, name=deployment_name)
     except ResourceNotFoundError:
@@ -625,6 +635,8 @@ def deploy_managed_endpoint(
         environment_variables={
             "TOKENIZERS_PARALLELISM": "false",
             "SLM_ENABLE_DATA_COLLECTION": "true",
+            "SLM_MAX_INPUT_TOKENS": str(max_input_tokens),
+            "SLM_MAX_OUTPUT_TOKENS": str(max_output_tokens),
             **({"SLM_BASE_MODEL": base_model} if base_model else {}),
             **({"SLM_KEY_VAULT_NAME": key_vault_name,
                 "SLM_HF_TOKEN_SECRET_NAME": hf_token_secret_name} if key_vault_name else {}),
@@ -638,44 +650,110 @@ def deploy_managed_endpoint(
     )
     ml_client.online_deployments.begin_create_or_update(deployment).result()
     endpoint = ml_client.online_endpoints.get(endpoint_name)
-    if dict(endpoint.traffic or {}) != previous_traffic:
-        raise RuntimeError("Endpoint traffic changed during candidate deployment; review before any promotion")
+    endpoint.traffic = {deployment_name: 100}
+    endpoint = ml_client.online_endpoints.begin_create_or_update(endpoint).result()
+    if dict(endpoint.traffic or {}) != {deployment_name: 100}:
+        raise RuntimeError("Dedicated endpoint did not route requests to its sole registered deployment")
     return endpoint
 
 
-def promote_deployment(
+def monitor_job(ml_client, job_name: str, on_status: Callable, get_job: Callable | None = None):
+    streamed: Future[None] = Future()
+
+    def stream_logs():
+        try:
+            ml_client.jobs.stream(job_name)
+        except Exception as exc:  # noqa: BLE001 - Re-raised by streamed.result() on the main thread.
+            streamed.set_exception(exc)
+        else:
+            streamed.set_result(None)
+
+    Thread(target=stream_logs, name="azure-job-logs", daemon=True).start()
+    while True:
+        if streamed.done():
+            streamed.result()
+        job = get_job() if get_job else ml_client.jobs.get(job_name)
+        on_status(job)
+        if job.status in {"Completed", "Failed", "Canceled"}:
+            streamed.result()
+            return job
+        time.sleep(10)
+
+
+def invoke_endpoint(
     ml_client,
     endpoint_name: str,
-    deployment_name: str,
-    traffic_percent: int = 100,
-):
-    if (
-        isinstance(traffic_percent, bool)
-        or not isinstance(traffic_percent, int)
-        or not 1 <= traffic_percent <= 100
-    ):
-        raise ValueError("traffic_percent must be an integer between 1 and 100")
-    endpoint = ml_client.online_endpoints.get(endpoint_name)
-    current = {
-        name: percent
-        for name, percent in dict(endpoint.traffic or {}).items()
-        if name != deployment_name and percent > 0
-    }
-    if traffic_percent == 100:
-        endpoint.traffic = {deployment_name: 100}
-    elif len(current) == 1:
-        incumbent = next(iter(current))
-        endpoint.traffic = {
-            incumbent: 100 - traffic_percent,
-            deployment_name: traffic_percent,
-        }
-    elif not current:
-        raise ValueError(
-            "Partial traffic requires one incumbent deployment; use 100 for the first release"
+    items: list[dict[str, Any]],
+    deployment_name: str | None = None,
+) -> list[dict]:
+    payload = {"input_data": items}
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as stream:
+        json.dump(payload, stream)
+        request_path = Path(stream.name)
+    try:
+        response = ml_client.online_endpoints.invoke(
+            endpoint_name=endpoint_name,
+            deployment_name=deployment_name,
+            request_file=str(request_path),
         )
-    else:
-        raise ValueError(
-            "Partial traffic requires exactly one incumbent deployment to avoid "
-            "silently changing an existing multi-deployment routing policy"
+        parsed = json.loads(response)
+        if isinstance(parsed, str):
+            parsed = json.loads(parsed)
+        if not isinstance(parsed, dict) or parsed.get("error"):
+            raise RuntimeError(f"Endpoint invocation failed: {parsed}")
+        predictions = parsed.get("predictions")
+        if not isinstance(predictions, list) or len(predictions) != len(items):
+            raise RuntimeError("Endpoint returned an invalid prediction count")
+        for prediction in predictions:
+            if not isinstance(prediction, dict) or not str(prediction.get("prediction", "")).strip():
+                raise RuntimeError("Endpoint returned an empty or invalid prediction")
+            latency = prediction.get("latency_ms")
+            if (isinstance(latency, bool) or not isinstance(latency, (int, float))
+                    or not math.isfinite(latency) or latency <= 0):
+                raise RuntimeError("Endpoint returned invalid latency evidence")
+        return predictions
+    finally:
+        request_path.unlink(missing_ok=True)
+
+
+def evaluate_endpoint(
+    ml_client,
+    endpoint_name: str,
+    records: Iterable[dict[str, Any]],
+    batch_size: int = 1,
+    deployment_name: str | None = None,
+    max_new_tokens: int = 512,
+) -> list[dict]:
+    if batch_size < 1 or max_new_tokens < 1:
+        raise ValueError("Endpoint batch size and output token budget must be positive")
+    source = list(records)
+    if not source:
+        raise ValueError("Endpoint evaluation requires sealed test records")
+    evaluated: list[dict] = []
+    for offset in range(0, len(source), batch_size):
+        batch = source[offset : offset + batch_size]
+        predictions = invoke_endpoint(
+            ml_client,
+            endpoint_name,
+            [{
+                "id": row["id"], "question": row["question"],
+                "instruction": question_context_instruction(row["question"], context_text(row["context"])),
+                "max_new_tokens": max_new_tokens,
+            } for row in batch],
+            deployment_name=deployment_name,
         )
-    return ml_client.online_endpoints.begin_create_or_update(endpoint).result()
+        if len(predictions) != len(batch):
+            raise RuntimeError("Endpoint returned a different number of predictions than inputs")
+        for row, result in zip(batch, predictions):
+            evaluated.append(
+                {
+                    "id": row.get("id"),
+                    "type": row.get("type"),
+                    "question": row["question"],
+                    "context": row.get("context", ""),
+                    "prediction": result["prediction"],
+                    "reference": row["cot_answer"],
+                    "latency_ms": result.get("latency_ms"),
+                }
+            )
+    return evaluated

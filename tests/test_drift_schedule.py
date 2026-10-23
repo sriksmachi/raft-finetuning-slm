@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lib.drift_schedule import create_drift_schedule
+from lib.monitoring import create_drift_schedule
 
 
 @pytest.fixture

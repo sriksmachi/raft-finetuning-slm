@@ -12,6 +12,7 @@ from lib.lora_artifacts import (
     DEFAULT_ADAPTER_NAME,
     adapter_name_from_model,
     load_lora_adapter,
+    resolve_base_model,
     resolve_lora_adapter,
     save_lora_adapter,
     validate_adapter_name,
@@ -118,6 +119,32 @@ def test_reject_missing_adapter(tmp_path):
         resolve_lora_adapter(tmp_path / "missing")
 
 
+def test_shared_base_resolver_preserves_remote_ids_and_resolves_nested_checkpoints(tmp_path):
+    assert resolve_base_model("meta-llama/Llama-3.2-3B-Instruct") == "meta-llama/Llama-3.2-3B-Instruct"
+    checkpoint = tmp_path / "mlflow" / "data"
+    checkpoint.mkdir(parents=True)
+    for filename in ("config.json", "tokenizer_config.json", "model.safetensors"):
+        (checkpoint / filename).write_text("{}", encoding="utf-8")
+    assert resolve_base_model(str(tmp_path)) == str(checkpoint)
+    for entry_point in ("train.py", "inference.py"):
+        tree = ast.parse((ROOT / "lib" / entry_point).read_text(encoding="utf-8"))
+        assert any(isinstance(node, ast.ImportFrom) and node.module.endswith("lora_artifacts")
+                   and any(alias.name == "resolve_base_model" for alias in node.names)
+                   for node in ast.walk(tree))
+
+
+def test_shared_base_resolver_rejects_incomplete_and_ambiguous_checkpoints(tmp_path):
+    with pytest.raises(RuntimeError, match="found 0"):
+        resolve_base_model(str(tmp_path))
+    for name in ("first", "second"):
+        folder = tmp_path / name
+        folder.mkdir()
+        for filename in ("config.json", "tokenizer_config.json", "model.safetensors"):
+            (folder / filename).write_text("{}", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="found 2"):
+        resolve_base_model(str(tmp_path))
+
+
 def test_load_attaches_named_frozen_adapter_to_supplied_base(tmp_path, monkeypatch):
     directory = _adapter(tmp_path, "candidate-1")
     base = Mock()
@@ -146,7 +173,8 @@ def test_inference_modes_load_base_then_adapter(tmp_path, mode, base_loads):
     attach = Mock(return_value=adapted)
     saved_tokenizer = Mock()
     auto_tokenizer = SimpleNamespace(from_pretrained=Mock(return_value=saved_tokenizer))
-    functions = _functions(ROOT / "lib" / "inference.py", {"download_model", "resolve_base_model"}, {
+    functions = _functions(ROOT / "lib" / "inference.py", {"download_model"}, {
+        "resolve_base_model": resolve_base_model,
         "Path": Path, "DTYPE": None, "log": logging.getLogger("test"),
         "FastLanguageModel": fast, "configure_tokenizer": lambda value, **kwargs: value,
         "resolve_lora_adapter": resolve_lora_adapter, "load_lora_adapter": attach,
@@ -184,7 +212,8 @@ def test_inference_resolves_foundry_base_before_attaching_adapter(tmp_path):
         for_inference=Mock(),
     )
     attach = Mock(return_value=adapted)
-    functions = _functions(ROOT / "lib" / "inference.py", {"download_model", "resolve_base_model"}, {
+    functions = _functions(ROOT / "lib" / "inference.py", {"download_model"}, {
+        "resolve_base_model": resolve_base_model,
         "Path": Path, "DTYPE": None, "log": logging.getLogger("test"),
         "FastLanguageModel": fast, "configure_tokenizer": lambda value, **kwargs: value,
         "resolve_lora_adapter": resolve_lora_adapter, "load_lora_adapter": attach,

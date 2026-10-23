@@ -158,6 +158,7 @@ def test_stage_03_defaults_to_env_gpt_configuration(monkeypatch):
             "datetime": __import__("datetime").datetime,
             "timezone": __import__("datetime").timezone,
             "os": os,
+            "Path": Path,
             "RUNS_DIR": Path("runs"),
             "__doc__": "",
         },

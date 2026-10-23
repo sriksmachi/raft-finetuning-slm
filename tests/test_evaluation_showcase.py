@@ -4,7 +4,6 @@ import json
 
 import pytest
 
-from app.evaluation_showcase import load_evaluation_showcase
 from scripts.export_evaluation_showcase import MODELS, SCORES, build_showcase
 
 
@@ -63,7 +62,7 @@ def test_build_showcase_summarizes_scores_and_latencies(tmp_path):
 
     output = tmp_path / "showcase.json"
     output.write_text(json.dumps(payload), encoding="utf-8")
-    assert load_evaluation_showcase(output) == payload
+    assert json.loads(output.read_text(encoding="utf-8")) == payload
 
 
 def test_build_showcase_rejects_predictions_that_do_not_match_evidence(tmp_path):

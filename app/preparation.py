@@ -6,8 +6,8 @@ import os
 import sys
 from pathlib import Path
 
-from app.fixtures import now
 from app.models import ProductionPreparation
+from app.workflow import now
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -42,12 +42,15 @@ def load_data_samples(dataset_dir: Path) -> list[dict]:
 
 def build_data_card(body: ProductionPreparation, directory: Path, version: str) -> dict:
     from lib.data import SPLITS, dataset_fingerprint, validate_dataset
+    from lib.release import policy_description
 
     dataset_dir = directory / "dataset"
     validation = validate_dataset(dataset_dir)
     counts = {split: validation[split]["rows"] for split in SPLITS}
     if sum(counts.values()) != body.num_samples:
         raise ValueError("Prepared dataset does not match the requested sample count")
+    policy = policy_description()
+    minimum_test_examples = policy["minimum_examples"]
     samples = load_data_samples(dataset_dir)
     fingerprint = dataset_fingerprint(dataset_dir)
     reference = f"azureml:{body.data_asset_name}:{version}"
@@ -55,6 +58,12 @@ def build_data_card(body: ProductionPreparation, directory: Path, version: str) 
         "simulated": False, "source_folder": body.source_folder, "recipe": body.recipe,
         "record_count": sum(counts.values()), "requested_samples": body.num_samples,
         "split_counts": counts, "splits": counts,
+        "release_sample_check": {
+            "policy_version": policy["version"],
+            "minimum_test_examples": minimum_test_examples,
+            "observed_test_examples": counts["test"],
+            "passed": counts["test"] >= minimum_test_examples,
+        },
         "fingerprint": fingerprint, "data_fingerprint": fingerprint,
         "validation": {"status": "passed", "checked_records": sum(counts.values()),
                        "invalid_records": 0, "splits": validation},

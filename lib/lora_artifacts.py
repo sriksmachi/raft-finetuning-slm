@@ -1,8 +1,10 @@
-"""Named LoRA adapter exports shared by training and inference."""
+"""Base checkpoint resolution and named LoRA adapters shared by GPU entry points."""
 
-from pathlib import Path
+import logging
 import re
+from pathlib import Path
 
+log = logging.getLogger(__name__)
 DEFAULT_ADAPTER_NAME = "finetuned_adapter"
 
 
@@ -63,3 +65,35 @@ def load_lora_adapter(base_model, artifact_path: str | Path):
     model.requires_grad_(False)
     model.eval()
     return model
+
+
+def resolve_base_model(base_model: str) -> str:
+    """Return a loadable model reference.
+
+    Foundry catalog assets are mounted/downloaded as a folder whose Transformers
+    checkpoint (config.json + tokenizer + weights) is nested under an MLflow model
+    layout, so ``from_pretrained`` on the mount root fails. When the argument is a
+    local directory, locate the single Transformers checkpoint inside it; otherwise
+    pass the value through unchanged (e.g. a Hugging Face repo id).
+    """
+    path = Path(base_model)
+    if not path.is_dir():
+        return base_model
+
+    candidates = [
+        config.parent
+        for config in path.rglob("config.json")
+        if (config.parent / "tokenizer_config.json").exists()
+        and (
+            any(config.parent.glob("*.safetensors"))
+            or any(config.parent.glob("pytorch_model*.bin"))
+        )
+    ]
+    if len(candidates) != 1:
+        raise RuntimeError(
+            f"Expected exactly one Transformers checkpoint under {path}, "
+            f"found {len(candidates)}: {candidates}"
+        )
+    resolved = candidates[0]
+    log.info("Resolved base model checkpoint: %s", resolved)
+    return str(resolved)

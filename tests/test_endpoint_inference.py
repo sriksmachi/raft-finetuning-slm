@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from lib.endpoint_inference import evaluate_endpoint, invoke_endpoint
+from lib.azureml_ops import evaluate_endpoint, invoke_endpoint
 from lib.prompts import question_context_instruction
 
 

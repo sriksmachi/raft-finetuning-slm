@@ -45,6 +45,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -58,6 +59,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from lib.azureml_ops import (
     create_inference_environment,
+    monitor_job,
     submit_inference_evaluation_job,
 )
 from lib.config import AzureMLConfig
@@ -145,7 +147,7 @@ def parse_args() -> argparse.Namespace:
         help="Defaults to AZURE_OPENAI_GPT_DEPLOYMENT, then gpt-4.1.",
     )
     parser.add_argument(
-        "--judge-deployment", default=None,
+        "--judge-deployment", default=os.environ.get("AZURE_OPENAI_JUDGE_DEPLOYMENT"),
         help="Separate RAG judge deployment on --gpt-endpoint; defaults to --gpt-deployment.",
     )
     parser.add_argument(
@@ -181,6 +183,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--max-records", type=int, default=None)
     parser.add_argument("--sample-records", type=int, default=None)
+    parser.add_argument("--receipt-path", type=Path, help="Write an atomic Studio job-status receipt.")
+    parser.add_argument("--result-dir", type=Path, help="Download completed prediction outputs to this folder.")
 
     parser.add_argument(
         "--skip-environment", action="store_true", help="Reuse an already-registered environment"
@@ -252,12 +256,33 @@ def print_job_metrics(config: AzureMLConfig, ml_client, job_name: str) -> None:
     )
 
 
+def write_evaluation_receipt(job, args, baseline_version, status):
+    if not args.receipt_path:
+        return
+    path = args.receipt_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".pending")
+    temporary.write_text(json.dumps({
+        "job_name": job.name, "job_id": job.id, "job_uri": getattr(job, "studio_url", None),
+        "status": status, "mode": args.mode, "training_job_name": args.finetuning_job_name,
+        "dataset_id": f"azureml:{args.test_data_asset_name}:{args.test_data_asset_version}",
+        "baseline_id": f"{args.llm_baseline_data_asset_name}:{baseline_version}",
+        "judge_deployment": args.judge_deployment or args.gpt_deployment,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }, indent=2), encoding="utf-8")
+    os.replace(temporary, path)
+
+
 def main() -> int:
     # Load .env before parse_args() so argparse defaults sourced from the
     # environment (e.g. --compute-name) see .env's values, not just whatever
     # the shell already exported.
     load_dotenv(PROJECT_ROOT / ".env")
     args = parse_args()
+    if (args.receipt_path or args.result_dir) and not args.wait:
+        raise ValueError("--receipt-path and --result-dir require --wait.")
+    if args.receipt_path and not os.environ.get("AZURE_OPENAI_GPT_DEPLOYMENT"):
+        raise ValueError("Configure AZURE_OPENAI_GPT_DEPLOYMENT in the backend environment before evaluation.")
     logging.basicConfig(
         level=args.log_level.upper(),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -342,6 +367,7 @@ def main() -> int:
             RUNS_DIR,
         )
 
+    args.finetuning_job_name = finetuning_job_name
     submitted_job = submit_inference_evaluation_job(
         ml_client=ml_client,
         test_data_asset=f"azureml:{args.test_data_asset_name}:{args.test_data_asset_version}",
@@ -381,6 +407,8 @@ def main() -> int:
         credential=credential,
     )
     log.info("Job name: %s", submitted_job.name)
+    baseline_version = args.llm_baseline_data_asset_version or baseline_output_version
+    write_evaluation_receipt(submitted_job, args, baseline_version, "Submitted")
     if baseline_asset is None:
         log.info(
             "GPT baseline will be registered as %s:%s when the job succeeds",
@@ -402,7 +430,22 @@ def main() -> int:
 
     if args.wait:
         log.info("Waiting for job %s to complete...", submitted_job.name)
-        ml_client.jobs.stream(submitted_job.name)
+        if args.receipt_path:
+            def updated(job):
+                write_evaluation_receipt(job, args, baseline_version, job.status)
+                log.info("Azure ML %s job %s: %s", args.mode, job.name, job.status)
+
+            completed = monitor_job(ml_client, submitted_job.name, updated)
+        else:
+            ml_client.jobs.stream(submitted_job.name)
+            completed = ml_client.jobs.get(submitted_job.name)
+        if completed.status != "Completed":
+            raise RuntimeError(f"Evaluation job did not complete successfully: {completed.status}")
+        if args.result_dir:
+            log.info("Downloading evaluation predictions and evidence.")
+            ml_client.jobs.download(
+                submitted_job.name, download_path=str(args.result_dir), output_name="predictions",
+            )
         print_job_metrics(config, ml_client, submitted_job.name)
     else:
         baseline_action = (

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,15 +11,12 @@ import pandas as pd
 BASELINE_FILE = "llm_baseline.csv"
 MANIFEST_FILE = "llm_baseline_manifest.json"
 IDENTITY_COLUMNS = ("source_index", "id", "type", "question", "context", "cot_answer")
-RAG_METRICS = ("faithfulness", "relevancy", "correctness")
-
-
-def file_sha256(path: str | Path) -> str:
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+if __package__:
+    from lib.evaluation import RAG_METRICS
+    from lib.release import file_sha256
+else:
+    from evaluation import RAG_METRICS
+    from release import file_sha256
 
 
 def required_gpt_columns() -> set[str]:

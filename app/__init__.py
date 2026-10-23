@@ -1,1 +1,1 @@
-"""Standalone, simulated SLM Studio API."""
+"""Production SLM Studio application."""

@@ -14,10 +14,13 @@ import mlflow
 
 if __package__:
     from lib.data import read_jsonl
-    from lib.monitoring import detect_drift, write_json_artifact
+    from lib.monitoring import detect_drift
+    from lib.release import write_json
 else:
+    from monitoring import detect_drift
+    from release import write_json
+
     from data import read_jsonl
-    from monitoring import detect_drift, write_json_artifact
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,7 +47,7 @@ def main(args: argparse.Namespace) -> None:
 
     profile = json.loads(profile_path.read_text(encoding="utf-8"))
     report = detect_drift(profile, records, args.psi_threshold)
-    output_path = write_json_artifact(report, Path(args.output) / "drift_report.json")
+    output_path = write_json(report, Path(args.output) / "drift_report.json")
     with mlflow.start_run():
         mlflow.log_metric("drift_detected", float(report["drift_detected"]))
         for feature, values in report["features"].items():

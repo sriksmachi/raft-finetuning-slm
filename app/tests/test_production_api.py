@@ -10,15 +10,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import ROOT, create_app
-from app.models import Preparation, ProductionPreparation
+from app.models import ProductionPreparation
 from app.preparation import build_data_card, prepare_data
 from app.production_api import MAX_LOG_BYTES, MAX_LOG_LINES
 
 
-def write_dataset(directory, count=7):
+def write_dataset(directory, count=7, test_count=1):
     dataset = directory / "dataset"
     dataset.mkdir(parents=True)
-    for split, size in (("train", count - 2), ("validation", 1), ("test", 1)):
+    for split, size in (("train", count - test_count - 1), ("validation", 1), ("test", test_count)):
         rows = [{
             "id": f"{split}-{index}", "type": "oracle", "question": f"Question {index}?",
             "oracle_context": f"Distinct source for {split}", "context": {"sentences": [["source"]]},
@@ -34,7 +34,7 @@ def production(tmp_path):
     source = tmp_path / "pdfs"
     source.mkdir()
     (source / "example.pdf").write_bytes(b"test PDF placeholder")
-    application = create_app(tmp_path / "demo", production_runs_dir=tmp_path / "production")
+    application = create_app(production_runs_dir=tmp_path / "production")
 
     async def runner(body, directory, version):
         write_dataset(directory, body.num_samples)
@@ -62,7 +62,7 @@ def wait(client, run_id):
 
 def test_prepare_preview_isolation_and_persistence(production, tmp_path):
     client, _application, body = production
-    assert client.get("/api/production/config").json()["enabled_stages"] == ["data_preparation", "training"]
+    assert client.get("/api/production/config").json()["enabled_stages"] == ["data_preparation", "training", "evaluation", "decision", "deployment"]
     assert client.get("/api/production/runs").json() == {"runs": []}
     assert client.get("/api/production/runs/latest").status_code == 404
     response = client.post("/api/production/runs", json=body)
@@ -86,12 +86,12 @@ def test_prepare_preview_isolation_and_persistence(production, tmp_path):
     assert card["asset_reference"] == f"azureml:slm-studio-data:{result['data_asset_version']}"
     assert len(card["fingerprint"]) == 64
     assert all(event["simulated"] is False for event in result["audit"])
-    assert client.get(f"/api/runs/{run_id}").status_code == 400
+    assert client.get(f"/api/runs/{run_id}").status_code == 404
     assert client.get("/api/production/runs/demo-completed").status_code == 400
-    assert all(run["mode"] == "demo" for run in client.get("/api/runs").json()["runs"])
+    assert client.get("/api/runs").status_code == 404
     assert client.post(f"/api/production/runs/{run_id}/training", json={"confirmed": True}).status_code == 404
     assert client.get("/api/production/runs/latest").json()["run_id"] == run_id
-    reopened = create_app(tmp_path / "other-demo", production_runs_dir=tmp_path / "production")
+    reopened = create_app(production_runs_dir=tmp_path / "production")
     with TestClient(reopened) as other:
         assert other.get(f"/api/production/runs/{run_id}").json()["data_card"] == card
 
@@ -163,6 +163,82 @@ def test_shutdown_and_concurrent_submission(production):
     assert client.post("/api/production/runs", json=body).status_code == 409
     client.portal.call(application.state.production.close)
     assert wait(client, result["run_id"])["status"] == "failed"
+
+
+def test_cancel_preparation_stops_work_and_allows_a_new_submission(production):
+    client, application, body = production
+    stopped = []
+
+    async def blocked(*args):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.append(True)
+
+    application.state.production.runner = blocked
+    run_id = client.post("/api/production/runs", json=body).json()["run_id"]
+    response = client.post(f"/api/production/runs/{run_id}/cancel")
+    assert response.status_code == 200, response.text
+    record = response.json()
+    assert stopped == [True]
+    assert record["status"] == "cancelled"
+    assert record["stages"]["data_preparation"]["status"] == "cancelled"
+    assert record["audit"][-1]["action"] == "task_cancelled"
+    assert client.get(f"/api/production/runs/{run_id}").json()["status"] == "cancelled"
+    assert "cancelled by user" in client.get(f"/api/production/runs/{run_id}/log").json()["current_status"]
+    assert client.post(f"/api/production/runs/{run_id}/cancel").status_code == 409
+    assert not application.state.production.tasks
+    assert client.post("/api/production/runs", json={
+        **body, "data_asset_version": "data-010126000001",
+    }).status_code == 202
+
+
+@pytest.mark.parametrize("stage,run_type", [
+    ("training", "training"), ("evaluation", "evaluation"),
+    ("decision", "release"), ("deployment", "release"),
+])
+def test_cancel_supports_all_production_stages(production, stage, run_type):
+    from app.workflow import new_record
+
+    client, application, _body = production
+    api = application.state.production
+    record = new_record("prod-cancellable", "source", "context-grounded")
+    record.update(status="running", current_stage=stage, run_type=run_type)
+    record["stages"][stage]["status"] = "running"
+    if run_type == "release":
+        record["release"] = {"status": "registering"}
+    api.store.save(record)
+    stopped = []
+
+    async def start():
+        async def blocked():
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.append(True)
+
+        task = asyncio.create_task(blocked(), name=f"prod-cancellable:{run_type}")
+        api.tasks.add(task)
+        task.add_done_callback(api.tasks.discard)
+        await asyncio.sleep(0)
+
+    client.portal.call(start)
+    response = client.post("/api/production/runs/prod-cancellable/cancel")
+    assert response.status_code == 200, response.text
+    assert stopped == [True]
+    saved = client.get("/api/production/runs/prod-cancellable").json()
+    assert saved["status"] == saved["stages"][stage]["status"] == "cancelled"
+    assert "Azure" in saved["stages"][stage]["error"]
+    assert saved["stages"][stage]["completed_at"]
+    assert not api.tasks
+
+
+def test_cancel_rejects_missing_invalid_and_completed_runs(production):
+    client, _application, body = production
+    assert client.post("/api/production/runs/invalid/cancel").status_code == 400
+    assert client.post("/api/production/runs/prod-missing/cancel").status_code == 404
+    record = wait(client, client.post("/api/production/runs", json=body).json()["run_id"])
+    assert client.post(f"/api/production/runs/{record['run_id']}/cancel").status_code == 409
 
 
 def test_recover_interrupted_run(production):
@@ -242,7 +318,7 @@ def test_completed_log_is_available_after_restart(production, tmp_path):
     result = client.get(f"/api/production/runs/{run_id}/log").json()
     assert "succeeded" in result["current_status"]
     assert result["stage_status"] == "succeeded"
-    reopened = create_app(tmp_path / "other-demo", production_runs_dir=tmp_path / "production")
+    reopened = create_app(production_runs_dir=tmp_path / "production")
     with TestClient(reopened) as other:
         assert other.get(f"/api/production/runs/{run_id}/log").json() == result
 
@@ -398,10 +474,37 @@ def test_duplicate_dataset_version_is_rejected_before_generation(production):
 
 
 def test_default_data_folder_in_ui_and_request_models():
-    assert Preparation(recipe="context-grounded").source_folder == "data/"
     assert ProductionPreparation().source_folder == "data/"
     html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
     assert 'name="source_folder" value="data/"' in html
+
+
+def test_default_sample_count_matches_ui_and_api_submission(production):
+    client, _, body = production
+    assert ProductionPreparation().num_samples == 300
+    html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    assert 'name="num_samples" type="number" value="300"' in html
+    assert "30 actual sealed-test examples" in html
+    body = {key: value for key, value in body.items() if key != "num_samples"}
+    response = client.post("/api/production/runs", json=body)
+    assert response.status_code == 202
+    result = wait(client, response.json()["run_id"])
+    assert result["data_card"]["requested_samples"] == 300
+    assert result["data_card"]["record_count"] == 300
+    assert result["data_card"]["release_sample_check"]["observed_test_examples"] == 1
+    assert result["data_card"]["release_sample_check"]["passed"] is False
+    assert result["stages"]["data_preparation"]["status"] == "succeeded"
+
+
+@pytest.mark.parametrize("test_count,passed", [(29, False), (30, True), (31, True)])
+def test_data_card_checks_actual_sealed_test_count(tmp_path, test_count, passed):
+    write_dataset(tmp_path, count=300, test_count=test_count)
+    card = build_data_card(ProductionPreparation(), tmp_path, "test-version")
+    assert card["release_sample_check"] == {
+        "policy_version": "paired-quality-v2", "minimum_test_examples": 30,
+        "observed_test_examples": test_count, "passed": passed,
+    }
+    assert card["validation"]["status"] == "passed"
 
 
 def test_production_prepares_default_data_folder(production, tmp_path, monkeypatch):
